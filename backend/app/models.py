@@ -104,6 +104,7 @@ class Answer(Base):
     answer_text: Mapped[str | None] = mapped_column(Text)
     retrieval_query: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(32))
+    model: Mapped[str | None] = mapped_column(String(128))
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)

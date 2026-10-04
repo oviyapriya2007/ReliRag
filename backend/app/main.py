@@ -17,6 +17,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind=engine)
+    # create_all doesn't alter existing tables; add columns introduced after first deploy.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE answers ADD COLUMN IF NOT EXISTS model VARCHAR(128)"))
     yield
 
 
