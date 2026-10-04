@@ -1,0 +1,6 @@
+{
+  "query_id": 103,
+  "status": "INSUFFICIENT_EVIDENCE",
+  "final_answer": "I couldn't find enough evidence in the uploaded documents to answer this question. The most relevant passages did not meet the similarity threshold, so no answer was generated.",
+  "attempts": []
+}

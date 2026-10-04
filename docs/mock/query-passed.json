@@ -1,0 +1,85 @@
+{
+  "query_id": 101,
+  "status": "PASSED",
+  "final_answer": "Full-time employees receive 20 days of paid annual leave per calendar year, accrued at 1.67 days per month. Up to 5 unused days can be carried over into the next calendar year; any remaining unused days are forfeited on December 31.",
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "answer": "Full-time employees receive 20 days of paid annual leave per calendar year, accrued at 1.67 days per month. Up to 5 unused days can be carried over into the next calendar year; any remaining unused days are forfeited on December 31.",
+      "retrieval_query": "How many days of annual leave do full-time employees get?",
+      "retrieval": [
+        {
+          "rank": 1,
+          "chunk_id": 412,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 12,
+          "chunk_index": 38,
+          "similarity": 0.812,
+          "content": "4.2 Annual Leave. Full-time employees are entitled to 20 days of paid annual leave per calendar year. Leave accrues monthly at a rate of 1.67 days per month of continuous service and may be taken once accrued, subject to manager approval."
+        },
+        {
+          "rank": 2,
+          "chunk_id": 413,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 12,
+          "chunk_index": 39,
+          "similarity": 0.744,
+          "content": "Carry-over. Employees may carry over up to 5 days of unused annual leave into the following calendar year. Any unused leave in excess of 5 days is forfeited on December 31 and is not paid out, except where required by local law."
+        },
+        {
+          "rank": 3,
+          "chunk_id": 415,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 13,
+          "chunk_index": 41,
+          "similarity": 0.583,
+          "content": "Part-time employees accrue annual leave on a pro-rata basis according to their contracted hours. For example, an employee working 3 days per week accrues 12 days of annual leave per calendar year."
+        }
+      ],
+      "evaluation": {
+        "faithfulness": 1.0,
+        "answer_relevance": 0.94,
+        "context_relevance": 0.88,
+        "passed": true,
+        "failure_type": null,
+        "feedback": "All claims are directly supported by the retrieved handbook sections on annual leave and carry-over.",
+        "claims": [
+          {
+            "claim_text": "Full-time employees receive 20 days of paid annual leave per calendar year.",
+            "verdict": "supported",
+            "evidence_chunk_id": 412,
+            "evidence_quote": "Full-time employees are entitled to 20 days of paid annual leave per calendar year."
+          },
+          {
+            "claim_text": "Annual leave accrues at 1.67 days per month.",
+            "verdict": "supported",
+            "evidence_chunk_id": 412,
+            "evidence_quote": "Leave accrues monthly at a rate of 1.67 days per month of continuous service"
+          },
+          {
+            "claim_text": "Up to 5 unused days can be carried over into the next calendar year.",
+            "verdict": "supported",
+            "evidence_chunk_id": 413,
+            "evidence_quote": "Employees may carry over up to 5 days of unused annual leave into the following calendar year."
+          },
+          {
+            "claim_text": "Remaining unused days are forfeited on December 31.",
+            "verdict": "supported",
+            "evidence_chunk_id": 413,
+            "evidence_quote": "Any unused leave in excess of 5 days is forfeited on December 31"
+          }
+        ]
+      },
+      "timings": {
+        "retrieve_ms": 48,
+        "generate_ms": 2310,
+        "evaluate_ms": 1875,
+        "input_tokens": 1042,
+        "output_tokens": 71
+      }
+    }
+  ]
+}

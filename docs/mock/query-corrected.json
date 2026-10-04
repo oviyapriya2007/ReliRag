@@ -1,0 +1,145 @@
+{
+  "query_id": 102,
+  "status": "CORRECTED",
+  "final_answer": "Remote employees can claim a one-time home-office equipment allowance of up to $500. Eligible items include a desk, chair, monitor, and keyboard, and receipts must be submitted within 30 days of purchase.",
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "answer": "Employees can be reimbursed up to $1,000 per year for home-office equipment. Claims are submitted through the travel and expense portal and are approved within 5 business days.",
+      "retrieval_query": "What is the reimbursement limit for home-office equipment?",
+      "retrieval": [
+        {
+          "rank": 1,
+          "chunk_id": 455,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 16,
+          "chunk_index": 52,
+          "similarity": 0.531,
+          "content": "6.1 Expense Reimbursement. Business expenses, including travel, accommodation, and client meals, are reimbursed through the travel and expense portal. All claims require manager approval and itemised receipts."
+        },
+        {
+          "rank": 2,
+          "chunk_id": 457,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 16,
+          "chunk_index": 54,
+          "similarity": 0.487,
+          "content": "Travel limits. Domestic hotel stays are reimbursed up to $180 per night and international stays up to $250 per night. Meal expenses during business travel are capped at $60 per day."
+        },
+        {
+          "rank": 3,
+          "chunk_id": 431,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 14,
+          "chunk_index": 46,
+          "similarity": 0.402,
+          "content": "Company equipment. Laptops and mobile phones issued by IT remain company property and must be returned on the employee's last day of employment."
+        }
+      ],
+      "evaluation": {
+        "faithfulness": 0.25,
+        "answer_relevance": 0.81,
+        "context_relevance": 0.37,
+        "passed": false,
+        "failure_type": "unsupported_claim",
+        "feedback": "The $1,000 annual limit does not appear in any retrieved chunk, and the context gives no approval timeframe. The retrieved chunks cover travel expenses and company-issued devices, not home-office equipment. Retry retrieval targeting the remote work / home-office equipment allowance section.",
+        "claims": [
+          {
+            "claim_text": "Employees can be reimbursed up to $1,000 per year for home-office equipment.",
+            "verdict": "unsupported",
+            "evidence_chunk_id": null,
+            "evidence_quote": null
+          },
+          {
+            "claim_text": "Claims are submitted through the travel and expense portal and are approved within 5 business days.",
+            "verdict": "partially_supported",
+            "evidence_chunk_id": 455,
+            "evidence_quote": "Business expenses, including travel, accommodation, and client meals, are reimbursed through the travel and expense portal."
+          }
+        ]
+      },
+      "timings": {
+        "retrieve_ms": 51,
+        "generate_ms": 2240,
+        "evaluate_ms": 1985,
+        "input_tokens": 1018,
+        "output_tokens": 48
+      }
+    },
+    {
+      "attempt_number": 2,
+      "answer": "Remote employees can claim a one-time home-office equipment allowance of up to $500. Eligible items include a desk, chair, monitor, and keyboard, and receipts must be submitted within 30 days of purchase.",
+      "retrieval_query": "remote work home-office equipment allowance limit eligible items receipts",
+      "retrieval": [
+        {
+          "rank": 1,
+          "chunk_id": 468,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 18,
+          "chunk_index": 61,
+          "similarity": 0.837,
+          "content": "7.3 Home-Office Equipment Allowance. Employees approved for remote work are eligible for a one-time home-office equipment allowance of up to $500. Eligible items include a desk, an ergonomic chair, a monitor, and a keyboard."
+        },
+        {
+          "rank": 2,
+          "chunk_id": 469,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 18,
+          "chunk_index": 62,
+          "similarity": 0.716,
+          "content": "To claim the allowance, submit itemised receipts through the travel and expense portal within 30 days of purchase. Purchases made before remote work approval are not eligible."
+        },
+        {
+          "rank": 3,
+          "chunk_id": 466,
+          "document_id": 7,
+          "filename": "acme_employee_handbook.pdf",
+          "page_number": 17,
+          "chunk_index": 59,
+          "similarity": 0.552,
+          "content": "7.1 Remote Work Eligibility. Employees may request to work remotely up to 3 days per week after completing their probation period, subject to written approval from their manager."
+        }
+      ],
+      "evaluation": {
+        "faithfulness": 1.0,
+        "answer_relevance": 0.95,
+        "context_relevance": 0.86,
+        "passed": true,
+        "failure_type": null,
+        "feedback": "All claims are supported by section 7.3 of the handbook. The answer correctly states the $500 one-time limit, eligible items, and the 30-day receipt deadline.",
+        "claims": [
+          {
+            "claim_text": "Remote employees can claim a one-time home-office equipment allowance of up to $500.",
+            "verdict": "supported",
+            "evidence_chunk_id": 468,
+            "evidence_quote": "Employees approved for remote work are eligible for a one-time home-office equipment allowance of up to $500."
+          },
+          {
+            "claim_text": "Eligible items include a desk, chair, monitor, and keyboard.",
+            "verdict": "supported",
+            "evidence_chunk_id": 468,
+            "evidence_quote": "Eligible items include a desk, an ergonomic chair, a monitor, and a keyboard."
+          },
+          {
+            "claim_text": "Receipts must be submitted within 30 days of purchase.",
+            "verdict": "supported",
+            "evidence_chunk_id": 469,
+            "evidence_quote": "submit itemised receipts through the travel and expense portal within 30 days of purchase."
+          }
+        ]
+      },
+      "timings": {
+        "retrieve_ms": 46,
+        "generate_ms": 2340,
+        "evaluate_ms": 1935,
+        "input_tokens": 1196,
+        "output_tokens": 63
+      }
+    }
+  ]
+}
