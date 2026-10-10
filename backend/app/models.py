@@ -117,7 +117,10 @@ class Answer(Base):
         order_by="RetrievalLog.rank",
     )
     evaluations: Mapped[list["Evaluation"]] = relationship(
-        back_populates="answer", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="answer",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="Evaluation.id",
     )
 
 
@@ -151,10 +154,17 @@ class Evaluation(Base):
     passed: Mapped[bool | None] = mapped_column()
     failure_type: Mapped[str | None] = mapped_column(String(64))
     feedback: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(128))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
 
     answer: Mapped[Answer] = relationship(back_populates="evaluations")
     claims: Mapped[list["Claim"]] = relationship(
-        back_populates="evaluation", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="evaluation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="Claim.id",
     )
 
 

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { USE_MOCK, getDocuments, runQuery } from "../../api/client";
 import AnswerText from "../components/AnswerText";
+import EvaluationPanel from "../components/EvaluationPanel";
 
 const COLORS = {
   purple: "#554188",
@@ -47,6 +48,8 @@ export default function Ask() {
   const [evidence, setEvidence] = useState([]);
   const [citations, setCitations] = useState([]);
   const [latency, setLatency] = useState(null);
+  const [evaluation, setEvaluation] = useState(null);
+  const [evaluateMs, setEvaluateMs] = useState(null);
   const [error, setError] = useState("");
 
   const evidenceRefs = useRef({});
@@ -106,6 +109,8 @@ export default function Ask() {
     setEvidence([]);
     setCitations([]);
     setLatency(null);
+    setEvaluation(null);
+    setEvaluateMs(null);
     setError("");
     setActiveEvidenceId(null);
     setLoading(true);
@@ -128,6 +133,8 @@ export default function Ask() {
       setAnswer(result.final_answer ?? "");
       setEvidence((attempt?.retrieval ?? []).map(toEvidence));
       setCitations(attempt?.citations ?? []);
+      setEvaluation(attempt?.evaluation ?? null);
+      setEvaluateMs(attempt?.timings?.evaluate_ms ?? null);
       setLatency(Date.now() - startTime);
       setSubmitted(true);
     } catch (queryError) {
@@ -423,6 +430,14 @@ export default function Ask() {
                   </div>
                 </div>
               </section>
+
+              {/* Day 3: Evaluator results */}
+              <EvaluationPanel
+                evaluation={evaluation}
+                evaluateMs={evaluateMs}
+                evidence={evidence}
+                onLocateEvidence={scrollToEvidence}
+              />
 
               {/* B3: Evidence Explorer */}
               <section className="overflow-hidden rounded-2xl border border-[#E5DBE6] bg-white shadow-sm">

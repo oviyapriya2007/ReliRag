@@ -3,9 +3,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
-from app.models import Answer, DocumentChunk, Query, RetrievalLog
+from app.models import Answer, DocumentChunk, Evaluation, Query, RetrievalLog
 from app.schemas import (
     AttemptTimings,
+    ClaimRead,
+    EvaluationRead,
     QueryAttempt,
     QueryRequest,
     QueryResponse,
@@ -34,14 +36,36 @@ def _load_query(db: Session, query_id: int) -> Query | None:
         select(Query)
         .where(Query.id == query_id)
         .options(
-            selectinload(Query.answers)
-            .selectinload(Answer.retrieval_logs)
-            .selectinload(RetrievalLog.chunk)
-            .selectinload(DocumentChunk.document)
+            selectinload(Query.answers).options(
+                selectinload(Answer.retrieval_logs)
+                .selectinload(RetrievalLog.chunk)
+                .selectinload(DocumentChunk.document),
+                selectinload(Answer.evaluations).selectinload(Evaluation.claims),
+            )
         )
         .execution_options(populate_existing=True)
     )
     return db.scalars(stmt).first()
+
+
+def _to_evaluation(evaluation: Evaluation) -> EvaluationRead:
+    return EvaluationRead(
+        faithfulness=evaluation.faithfulness,
+        answer_relevance=evaluation.answer_relevance,
+        context_relevance=evaluation.context_relevance,
+        passed=evaluation.passed,
+        failure_type=evaluation.failure_type,
+        feedback=evaluation.feedback,
+        claims=[
+            ClaimRead(
+                claim_text=claim.claim_text,
+                verdict=claim.verdict,
+                evidence_chunk_id=claim.evidence_chunk_id,
+                evidence_quote=claim.evidence_quote,
+            )
+            for claim in evaluation.claims
+        ],
+    )
 
 
 def _to_attempt(answer: Answer) -> QueryAttempt:
@@ -59,6 +83,8 @@ def _to_attempt(answer: Answer) -> QueryAttempt:
         for log in answer.retrieval_logs
     ]
     citations = parse_citations(answer.answer_text, len(retrieval)) if answer.answer_text else []
+    # Evaluations are ordered by id, so the last one is the latest.
+    evaluation = answer.evaluations[-1] if answer.evaluations else None
     return QueryAttempt(
         attempt_number=answer.attempt_number,
         answer=answer.answer_text,
@@ -67,9 +93,10 @@ def _to_attempt(answer: Answer) -> QueryAttempt:
         model=answer.model,
         citations=citations,
         retrieval=retrieval,
-        evaluation=None,
+        evaluation=_to_evaluation(evaluation) if evaluation is not None else None,
         timings=AttemptTimings(
             generate_ms=answer.latency_ms,
+            evaluate_ms=evaluation.latency_ms if evaluation is not None else None,
             input_tokens=answer.input_tokens,
             output_tokens=answer.output_tokens,
         ),

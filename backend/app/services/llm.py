@@ -56,10 +56,12 @@ def call_claude(
     system: str | None = None,
     max_tokens: int | None = None,
     model: str | None = None,
+    temperature: float | None = None,
 ) -> LLMResult:
     """Send one Messages API request to Claude, retrying once on transient failures.
 
     `messages` is either a single user prompt or a list of Messages API message dicts.
+    `temperature=None` leaves the API default in place.
     `latency_ms` covers all attempts, including the backoff delay.
     """
     model = model or settings.claude_model
@@ -75,6 +77,8 @@ def call_claude(
     }
     if system:
         request["system"] = system
+    if temperature is not None:
+        request["temperature"] = temperature
 
     client = get_client()
     started = time.perf_counter()
