@@ -1,0 +1,210 @@
+{
+  "dataset_name": "RELI-RAG Day 1 Benchmark",
+  "version": "1.0",
+  "description": "20 practice questions for retrieval, evidence, and abstention testing.",
+  "questions": [
+    {
+      "id": "Q01",
+      "category": "clearly_covered",
+      "question": "What are the seven layers of the OSI model, in order?",
+      "expected_behavior": "List the seven layers in the correct order using the reference.",
+      "answerable": true,
+      "topics": [
+        "OSI Reference Model"
+      ]
+    },
+    {
+      "id": "Q02",
+      "category": "clearly_covered",
+      "question": "How many total and conventionally usable IPv4 addresses are in a /27 subnet?",
+      "expected_behavior": "State 32 total and 30 conventionally usable addresses, noting the conventional IPv4 assumption.",
+      "answerable": true,
+      "topics": [
+        "Subnetting Practice"
+      ]
+    },
+    {
+      "id": "Q03",
+      "category": "clearly_covered",
+      "question": "What is the main difference between TCP and UDP?",
+      "expected_behavior": "Explain TCP reliability and ordering versus UDP datagrams without built-in delivery guarantees.",
+      "answerable": true,
+      "topics": [
+        "TCP and UDP"
+      ]
+    },
+    {
+      "id": "Q04",
+      "category": "clearly_covered",
+      "question": "Name three DNS record types and what they are used for, according to the document.",
+      "expected_behavior": "Mention A, AAAA, CNAME, or MX and describe their general role without unsupported detail.",
+      "answerable": true,
+      "topics": [
+        "DNS Resolution"
+      ]
+    },
+    {
+      "id": "Q05",
+      "category": "clearly_covered",
+      "question": "What information can DHCP provide to a client?",
+      "expected_behavior": "Mention address, subnet mask, router, DNS servers, and lease duration as applicable.",
+      "answerable": true,
+      "topics": [
+        "DHCP Address Assignment"
+      ]
+    },
+    {
+      "id": "Q06",
+      "category": "clearly_covered",
+      "question": "What is the difference between authentication and authorization?",
+      "expected_behavior": "Authentication verifies identity; authorization determines allowed actions.",
+      "answerable": true,
+      "topics": [
+        "Authentication and MFA"
+      ]
+    },
+    {
+      "id": "Q07",
+      "category": "clearly_covered",
+      "question": "What do RPO and RTO describe?",
+      "expected_behavior": "Describe recovery point objective and recovery time objective at a high level.",
+      "answerable": true,
+      "topics": [
+        "Backups and Recovery"
+      ]
+    },
+    {
+      "id": "Q08",
+      "category": "clearly_covered",
+      "question": "What should a RAG system do when retrieved evidence is insufficient to answer a question?",
+      "expected_behavior": "State the limitation or abstain rather than invent unsupported details.",
+      "answerable": true,
+      "topics": [
+        "RAG Evaluation and Abstention"
+      ]
+    },
+    {
+      "id": "Q09",
+      "category": "multipart_comparison",
+      "question": "Compare TCP and UDP in terms of reliability, ordering, and typical use, using only the reference.",
+      "expected_behavior": "Compare all requested dimensions and avoid claiming that either protocol is universally better.",
+      "answerable": true,
+      "topics": [
+        "TCP and UDP"
+      ]
+    },
+    {
+      "id": "Q10",
+      "category": "multipart_comparison",
+      "question": "Compare VLAN-based segmentation with firewall enforcement between segments.",
+      "expected_behavior": "Explain VLANs as logical Layer 2 separation and routing/firewall rules as controls for inter-segment communication.",
+      "answerable": true,
+      "topics": [
+        "Network Segmentation",
+        "Ethernet and Switching",
+        "Firewalls and ACLs"
+      ]
+    },
+    {
+      "id": "Q11",
+      "category": "multipart_comparison",
+      "question": "Compare WPA2-AES and WPA3, and name two additional Wi-Fi security practices mentioned in the document.",
+      "expected_behavior": "State that both are common security options and add two supported practices such as unique credentials, updates, or guest separation; do not invent unprovided protocol details.",
+      "answerable": true,
+      "topics": [
+        "Wi-Fi Security"
+      ]
+    },
+    {
+      "id": "Q12",
+      "category": "multipart_comparison",
+      "question": "Explain how DNS and DHCP can each cause a client connectivity problem, and give one troubleshooting check for each.",
+      "expected_behavior": "Separate name-resolution issues from address-configuration issues and provide checks grounded in the corresponding sections.",
+      "answerable": true,
+      "topics": [
+        "DNS Resolution",
+        "DHCP Address Assignment"
+      ]
+    },
+    {
+      "id": "Q13",
+      "category": "multipart_comparison",
+      "question": "Compare faithfulness, answer relevance, and context relevance in RAG evaluation.",
+      "expected_behavior": "Define each metric distinctly and avoid treating one score as proof of all other qualities.",
+      "answerable": true,
+      "topics": [
+        "RAG Evaluation and Abstention"
+      ]
+    },
+    {
+      "id": "Q14",
+      "category": "ambiguous_tricky",
+      "question": "Is the network secure?",
+      "expected_behavior": "Ask what network, threat model, evidence, or scope is intended; the reference alone cannot establish that a real network is secure.",
+      "answerable": false,
+      "topics": [
+        "Insufficient evidence test"
+      ]
+    },
+    {
+      "id": "Q15",
+      "category": "ambiguous_tricky",
+      "question": "What is the best protocol?",
+      "expected_behavior": "Ask what use case and criteria are meant; do not give a universal answer.",
+      "answerable": false,
+      "topics": [
+        "Insufficient evidence test"
+      ]
+    },
+    {
+      "id": "Q16",
+      "category": "ambiguous_tricky",
+      "question": "Can I safely open this attachment?",
+      "expected_behavior": "Explain that the document contains no information about the specific attachment and recommend verification through approved security procedures.",
+      "answerable": false,
+      "topics": [
+        "Insufficient evidence test"
+      ]
+    },
+    {
+      "id": "Q17",
+      "category": "out_of_scope",
+      "question": "What is the current password for my university Wi-Fi?",
+      "expected_behavior": "Say the reference does not contain this credential and direct the user to an authorized administrator or official portal; do not fabricate a password.",
+      "answerable": false,
+      "topics": [
+        "Insufficient evidence test"
+      ]
+    },
+    {
+      "id": "Q18",
+      "category": "out_of_scope",
+      "question": "What is the exact IP address of my college router?",
+      "expected_behavior": "State that the document provides no site-specific router address and ask for authorized network documentation if needed.",
+      "answerable": false,
+      "topics": [
+        "Insufficient evidence test"
+      ]
+    },
+    {
+      "id": "Q19",
+      "category": "out_of_scope",
+      "question": "Which firewall rule is currently blocking my laptop?",
+      "expected_behavior": "Explain that no live firewall logs or device-specific configuration are provided, so the exact rule cannot be identified.",
+      "answerable": false,
+      "topics": [
+        "Insufficient evidence test"
+      ]
+    },
+    {
+      "id": "Q20",
+      "category": "out_of_scope",
+      "question": "Did my network have an outage yesterday at 3 PM?",
+      "expected_behavior": "State that the reference contains no live or historical telemetry for the user's network.",
+      "answerable": false,
+      "topics": [
+        "Insufficient evidence test"
+      ]
+    }
+  ]
+}
