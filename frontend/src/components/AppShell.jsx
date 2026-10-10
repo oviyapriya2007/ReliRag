@@ -60,7 +60,7 @@ function AppShell() {
         </div>
       </aside>
 
-      <main className="ml-64 min-h-screen p-8">
+      <main className="ml-64 min-h-screen bg-[var(--color-background)] p-6 text-gray-900">
         <Outlet />
       </main>
     </div>
