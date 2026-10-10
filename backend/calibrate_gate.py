@@ -8,6 +8,7 @@ SIMILARITY_GATE is never changed automatically.
 Usage (from the project root or backend/):
     python backend/calibrate_gate.py                                # built-in placeholder questions
     python backend/calibrate_gate.py --questions questions.json     # {"covered": [...], "out_of_scope": [...]}
+    python backend/calibrate_gate.py --questions data/benchmark.json --doc-ids 8   # benchmark format
     python backend/calibrate_gate.py --covered "q1" "q2" --out-of-scope "q3" "q4"
     python backend/calibrate_gate.py --doc-ids 7                    # restrict retrieval to documents
 
@@ -28,6 +29,15 @@ from app.services.retrieval import retrieve  # noqa: E402
 
 COVERED = "covered"
 OUT_OF_SCOPE = "out_of_scope"
+
+# data/benchmark.json categories -> calibration groups. Ambiguous questions are treated as
+# out-of-scope here: the gate should not admit them as answerable.
+BENCHMARK_CATEGORIES = {
+    "clearly_covered": COVERED,
+    "multipart_comparison": COVERED,
+    "ambiguous_tricky": OUT_OF_SCOPE,
+    "out_of_scope": OUT_OF_SCOPE,
+}
 
 # ---------------------------------------------------------------------------
 # PLACEHOLDER QUESTIONS: written for the sample data/test.pdf ("Sample PDF Created
@@ -59,10 +69,53 @@ class Score:
     similarity: float
 
 
+def _string_list(value: object, name: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(q, str) and q.strip() for q in value):
+        raise ValueError(f"{name!r} must be a list of non-empty strings")
+    return [q.strip() for q in value]
+
+
+def parse_questions_file(data: object) -> dict[str, list[str]]:
+    """Group questions from either supported JSON format into covered / out-of-scope.
+
+    - Simple: {"covered": [...], "out_of_scope": [...]}
+    - Benchmark (data/benchmark.json): {"questions": [{"id", "category", "question"}, ...]}
+    """
+    if not isinstance(data, dict):
+        raise ValueError("questions file must contain a JSON object")
+
+    if "questions" not in data:
+        return {
+            COVERED: _string_list(data.get(COVERED, []), COVERED),
+            OUT_OF_SCOPE: _string_list(data.get(OUT_OF_SCOPE, []), OUT_OF_SCOPE),
+        }
+
+    entries = data["questions"]
+    if not isinstance(entries, list):
+        raise ValueError("'questions' must be a list")
+
+    questions: dict[str, list[str]] = {COVERED: [], OUT_OF_SCOPE: []}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"question #{index} must be an object")
+        label = entry.get("id", f"#{index}")
+        category = entry.get("category")
+        if category not in BENCHMARK_CATEGORIES:
+            raise ValueError(
+                f"question {label} has invalid or missing category {category!r}; "
+                f"expected one of {sorted(BENCHMARK_CATEGORIES)}"
+            )
+        question = entry.get("question")
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError(f"question {label} has a missing or empty 'question' field")
+        questions[BENCHMARK_CATEGORIES[category]].append(question.strip())
+    return questions
+
+
 def load_questions(args: argparse.Namespace) -> dict[str, list[str]]:
     if args.questions:
         data = json.loads(Path(args.questions).read_text(encoding="utf-8-sig"))
-        questions = {COVERED: data.get(COVERED, []), OUT_OF_SCOPE: data.get(OUT_OF_SCOPE, [])}
+        questions = parse_questions_file(data)
     elif args.covered or args.out_of_scope:
         questions = {COVERED: args.covered or [], OUT_OF_SCOPE: args.out_of_scope or []}
     else:
@@ -115,7 +168,10 @@ def suggest_gate(lowest_covered: float, highest_out: float) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Calibrate the similarity gate (no Claude calls).")
-    parser.add_argument("--questions", help='JSON file: {"covered": [...], "out_of_scope": [...]}')
+    parser.add_argument(
+        "--questions",
+        help='JSON file: {"covered": [...], "out_of_scope": [...]} or the data/benchmark.json format',
+    )
     parser.add_argument("--covered", nargs="*", default=None)
     parser.add_argument("--out-of-scope", nargs="*", default=None)
     parser.add_argument("--doc-ids", type=int, nargs="*", default=None)
