@@ -61,7 +61,7 @@ class Score:
 
 def load_questions(args: argparse.Namespace) -> dict[str, list[str]]:
     if args.questions:
-        data = json.loads(Path(args.questions).read_text(encoding="utf-8"))
+        data = json.loads(Path(args.questions).read_text(encoding="utf-8-sig"))
         questions = {COVERED: data.get(COVERED, []), OUT_OF_SCOPE: data.get(OUT_OF_SCOPE, [])}
     elif args.covered or args.out_of_scope:
         questions = {COVERED: args.covered or [], OUT_OF_SCOPE: args.out_of_scope or []}

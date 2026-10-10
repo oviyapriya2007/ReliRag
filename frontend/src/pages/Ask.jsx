@@ -1,5 +1,7 @@
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { USE_MOCK, getDocuments, runQuery } from "../../api/client";
+import AnswerText from "../components/AnswerText";
 
 const COLORS = {
   purple: "#554188",
@@ -12,49 +14,28 @@ const COLORS = {
   indigo: "#7080DA",
 };
 
-const DOCUMENTS = [
-  {
-    id: "network-security",
-    name: "Network Security Fundamentals.pdf",
-  },
-  {
-    id: "computer-networks",
-    name: "Computer Networks.pdf",
-  },
-];
-
-const SAMPLE_EVIDENCE = [
-  {
-    id: "evidence-1",
-    documentId: "network-security",
-    title: "Network Security Fundamentals.pdf",
-    page: 12,
-    rank: 1,
-    score: 0.92,
-    text: "Network security involves policies, practices, and technologies designed to protect computer networks, devices, and data from unauthorized access, misuse, modification, or disruption.",
-  },
-  {
-    id: "evidence-2",
-    documentId: "computer-networks",
-    title: "Computer Networks.pdf",
-    page: 28,
-    rank: 2,
-    score: 0.84,
-    text: "Network security mechanisms include authentication, access control, encryption, and monitoring. These mechanisms help protect information while it is transmitted across a network.",
-  },
-];
-
-const MOCK_ANSWER =
-  "Network security protects computer networks, connected devices, and data from unauthorized access, misuse, and disruption. It uses mechanisms such as authentication, access control, encryption, and monitoring to help maintain confidentiality, integrity, and availability.";
-
 const INSUFFICIENT_MESSAGE =
   "The uploaded documents do not contain enough information to answer this question reliably.";
 
+// POST /query is a single request, so the "Generating" stage is shown after a short delay.
+const GENERATING_STAGE_DELAY_MS = 800;
+
+function toEvidence(chunk) {
+  return {
+    id: chunk.chunk_id,
+    documentId: chunk.document_id,
+    title: chunk.filename,
+    page: chunk.page_number,
+    rank: chunk.rank,
+    score: chunk.similarity ?? 0,
+    text: chunk.content,
+  };
+}
+
 export default function Ask() {
   const [question, setQuestion] = useState("");
-  const [selectedDocuments, setSelectedDocuments] = useState(
-    DOCUMENTS.map((document) => document.id)
-  );
+  const [documents, setDocuments] = useState([]);
+  const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState("");
@@ -62,18 +43,35 @@ export default function Ask() {
   const [showDebug, setShowDebug] = useState(false);
   const [activeEvidenceId, setActiveEvidenceId] = useState(null);
   const [answer, setAnswer] = useState("");
+  const [status, setStatus] = useState("");
+  const [evidence, setEvidence] = useState([]);
+  const [citations, setCitations] = useState([]);
   const [latency, setLatency] = useState(null);
-  const [insufficientEvidence, setInsufficientEvidence] = useState(false);
+  const [error, setError] = useState("");
 
   const evidenceRefs = useRef({});
 
-  const filteredEvidence = useMemo(
+  const insufficientEvidence = status === "INSUFFICIENT_EVIDENCE";
+
+  const citedEvidence = useMemo(
     () =>
-      SAMPLE_EVIDENCE.filter((item) =>
-        selectedDocuments.includes(item.documentId)
-      ),
-    [selectedDocuments]
+      citations
+        .map((number) => evidence.find((item) => item.rank === number))
+        .filter(Boolean),
+    [citations, evidence]
   );
+
+  useEffect(() => {
+    getDocuments()
+      .then((loaded) => {
+        setDocuments(loaded);
+        setSelectedDocuments(loaded.map((document) => document.id));
+      })
+      .catch((loadError) => {
+        console.error("Failed to load documents:", loadError);
+        setError(`Failed to load documents: ${loadError.message}`);
+      });
+  }, []);
 
   const toggleDocument = (documentId) => {
     setSelectedDocuments((current) =>
@@ -104,40 +102,39 @@ export default function Ask() {
 
     setSubmitted(false);
     setAnswer("");
+    setStatus("");
+    setEvidence([]);
+    setCitations([]);
     setLatency(null);
-    setInsufficientEvidence(false);
+    setError("");
     setActiveEvidenceId(null);
     setLoading(true);
     setLoadingStage("Retrieving relevant document passages...");
 
     const startTime = Date.now();
+    const stageTimer = window.setTimeout(
+      () => setLoadingStage("Generating an answer from the retrieved evidence..."),
+      GENERATING_STAGE_DELAY_MS
+    );
 
     try {
-      // Mock retrieval stage. B6 will connect the real backend.
-      await new Promise((resolve) => window.setTimeout(resolve, 600));
+      const result = await runQuery({
+        question: question.trim(),
+        documentIds: selectedDocuments,
+      });
+      const attempt = result.attempts?.[result.attempts.length - 1];
 
-      setLoadingStage("Generating an answer from the retrieved evidence...");
-
-      // Mock generation stage. This is not a live backend response.
-      await new Promise((resolve) => window.setTimeout(resolve, 600));
-
-      // Temporary B5 test trigger; replace with the backend result in B6.
-      const demoInsufficient =
-        /capital of mars|invented document|unknown secret/i.test(question);
-
-      setInsufficientEvidence(demoInsufficient);
-
-      if (demoInsufficient) {
-        setAnswer("");
-      } else {
-        setAnswer(MOCK_ANSWER);
-      }
-
+      setStatus(result.status);
+      setAnswer(result.final_answer ?? "");
+      setEvidence((attempt?.retrieval ?? []).map(toEvidence));
+      setCitations(attempt?.citations ?? []);
       setLatency(Date.now() - startTime);
       setSubmitted(true);
-    } catch (error) {
-      console.error("Unable to generate the mock answer:", error);
+    } catch (queryError) {
+      console.error("Query failed:", queryError);
+      setError(queryError.message);
     } finally {
+      window.clearTimeout(stageTimer);
       setLoading(false);
       setLoadingStage("");
     }
@@ -198,7 +195,7 @@ export default function Ask() {
             </h2>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              {DOCUMENTS.map((document) => (
+              {documents.map((document) => (
                 <label
                   key={document.id}
                   className="flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition"
@@ -218,7 +215,7 @@ export default function Ask() {
                     className="mt-1 accent-[#554188]"
                   />
 
-                  <span className="text-sm font-medium text-gray-700">
+                  <span className="min-w-0 break-all text-sm font-medium text-gray-700">
                     {document.name}
                   </span>
                 </label>
@@ -226,7 +223,9 @@ export default function Ask() {
             </div>
 
             <p className="mt-2 text-xs text-gray-500">
-              Select one or more documents to search.
+              {documents.length > 0
+                ? "Select one or more documents to search."
+                : "No documents uploaded yet. Upload a PDF on the Documents page first."}
             </p>
           </div>
 
@@ -267,6 +266,15 @@ export default function Ask() {
               </p>
             </div>
           </div>
+        )}
+
+        {error && (
+          <p
+            role="alert"
+            className="mt-5 rounded-xl border border-[#E7B8C2] bg-red-50 p-4 text-sm text-[#B4233D]"
+          >
+            {error}
+          </p>
         )}
       </section>
 
@@ -330,24 +338,27 @@ export default function Ask() {
                     </h2>
 
                     <p className="mt-1 text-sm text-gray-500">
-                      Answer generated using sample evidence
+                      Answer generated from the retrieved evidence
                     </p>
                   </div>
 
-                  <span
-                    className="rounded-full px-3 py-1.5 text-xs font-bold"
-                    style={{
-                      backgroundColor: COLORS.lavender,
-                      color: COLORS.purple,
-                    }}
-                  >
-                    DEMO · MOCK DATA
-                  </span>
+                  {USE_MOCK && (
+                    <span
+                      className="rounded-full px-3 py-1.5 text-xs font-bold"
+                      style={{
+                        backgroundColor: COLORS.lavender,
+                        color: COLORS.purple,
+                      }}
+                    >
+                      DEMO · MOCK DATA
+                    </span>
+                  )}
                 </div>
 
-                <p className="mt-5 text-sm leading-7 text-gray-700">
-                  {answer}
-                </p>
+                <AnswerText
+                  text={answer}
+                  className="mt-5 text-sm leading-7 text-gray-700"
+                />
 
                 <div className="mt-5 border-t border-[#E5DBE6] pt-4">
                   <p
@@ -357,8 +368,14 @@ export default function Ask() {
                     Supporting citations
                   </p>
 
+                  {citedEvidence.length === 0 && (
+                    <p className="text-sm text-gray-500">
+                      The answer did not cite any retrieved passage.
+                    </p>
+                  )}
+
                   <div className="flex flex-wrap gap-2">
-                    {filteredEvidence.map((item) => (
+                    {citedEvidence.map((item) => (
                       <button
                         key={item.id}
                         type="button"
@@ -370,7 +387,7 @@ export default function Ask() {
                           color: COLORS.purple,
                         }}
                       >
-                        [{item.title}, p. {item.page}]
+                        [{item.rank}] {item.title}, p. {item.page}
                       </button>
                     ))}
                   </div>
@@ -386,7 +403,7 @@ export default function Ask() {
                       className="mt-1 text-sm font-bold"
                       style={{ color: COLORS.purple }}
                     >
-                      Sample answer generated
+                      {status}
                     </p>
                   </div>
 
@@ -395,7 +412,7 @@ export default function Ask() {
                     style={{ backgroundColor: COLORS.smoke }}
                   >
                     <p className="text-xs text-gray-500">
-                      Total mock latency
+                      Total latency
                     </p>
                     <p
                       className="mt-1 text-sm font-bold"
@@ -419,7 +436,7 @@ export default function Ask() {
                     </h2>
 
                     <p className="mt-1 text-sm text-gray-500">
-                      Explore the sample passages supporting this answer.
+                      Explore the retrieved passages behind this answer.
                     </p>
                   </div>
 
@@ -440,8 +457,8 @@ export default function Ask() {
 
                 {showEvidence && (
                   <div className="space-y-4 border-t border-[#E5DBE6] p-5">
-                    {filteredEvidence.length > 0 ? (
-                      filteredEvidence.map((item) => (
+                    {evidence.length > 0 ? (
+                      evidence.map((item) => (
                         <article
                           key={item.id}
                           ref={(element) => {
@@ -464,9 +481,9 @@ export default function Ask() {
                           }}
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
+                            <div className="min-w-0">
                               <h3
-                                className="text-sm font-bold"
+                                className="break-all text-sm font-bold"
                                 style={{ color: COLORS.purple }}
                               >
                                 {item.title}
@@ -504,7 +521,7 @@ export default function Ask() {
                       ))
                     ) : (
                       <p className="text-sm text-gray-500">
-                        No sample evidence is available for the selected
+                        No passages were retrieved for the selected
                         documents.
                       </p>
                     )}
@@ -550,12 +567,13 @@ export default function Ask() {
                       className="rounded-lg p-3 text-xs leading-5 text-gray-600"
                       style={{ backgroundColor: COLORS.smoke }}
                     >
-                      Demo data: ranks and similarity scores are illustrative,
-                      not actual pgvector retrieval results.
+                      {USE_MOCK
+                        ? "Demo data: ranks and similarity scores are illustrative, not actual pgvector retrieval results."
+                        : "Cosine similarity from pgvector (1 − distance) between the question and each chunk."}
                     </p>
 
-                    {filteredEvidence.length > 0 ? (
-                      filteredEvidence
+                    {evidence.length > 0 ? (
+                      evidence
                         .slice()
                         .sort((a, b) => a.rank - b.rank)
                         .map((item) => (
@@ -593,14 +611,14 @@ export default function Ask() {
                               <div
                                 className="h-full rounded-full transition-all"
                                 style={{
-                                  width: `${item.score * 100}%`,
+                                  width: `${Math.max(0, item.score) * 100}%`,
                                   backgroundColor: COLORS.blue,
                                 }}
                               />
                             </div>
 
                             <h3
-                              className="mt-3 text-sm font-semibold"
+                              className="mt-3 break-all text-sm font-semibold"
                               style={{ color: COLORS.purple }}
                             >
                               {item.title}
@@ -626,7 +644,7 @@ export default function Ask() {
                         ))
                     ) : (
                       <p className="text-sm text-gray-500">
-                        No sample chunks are available for the selected
+                        No chunks were retrieved for the selected
                         documents.
                       </p>
                     )}

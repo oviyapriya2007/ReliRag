@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.models import Document
-from app.schemas import DocumentDeleteResponse, DocumentRead, DocumentUploadResponse
+from app.schemas import DocumentDeleteResponse, DocumentRead
 from app.services.ingestion import ingest_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -42,7 +42,7 @@ def _discard(db: Session, document: Document) -> None:
 
 # Sync handler on purpose: FastAPI runs it in a worker thread, so the
 # CPU-bound parsing and embedding don't block the event loop.
-@router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
 def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         filename, data = _read_pdf_upload(file)

@@ -9,6 +9,8 @@ from app.services.similarity_gate import INSUFFICIENT_EVIDENCE
 ANSWERED = "ANSWERED"
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
+# Claude sometimes wraps the refusal token in Markdown or follows it with an explanation.
+_REFUSAL_RE = re.compile(rf"^[\s*_`]*{INSUFFICIENT_EVIDENCE}\b")
 
 SYSTEM_PROMPT = f"""You answer questions using ONLY the numbered context passages provided.
 
@@ -41,6 +43,11 @@ def build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
     return f"Context:\n\n{build_context(chunks)}\n\nQuestion: {question}"
 
 
+def is_refusal(text: str) -> bool:
+    """True if a Claude reply begins with the INSUFFICIENT_EVIDENCE refusal token."""
+    return _REFUSAL_RE.match(text) is not None
+
+
 def parse_citations(text: str, num_chunks: int) -> list[int]:
     """Return valid 1-based citation numbers in order of first appearance, without duplicates."""
     seen: list[int] = []
@@ -71,7 +78,7 @@ def generate_answer(
     llm = call_claude(build_prompt(question, chunks), system=SYSTEM_PROMPT, max_tokens=max_tokens)
     text = llm.text.strip()
 
-    if text == INSUFFICIENT_EVIDENCE:
+    if is_refusal(text):
         return GenerationResult(INSUFFICIENT_EVIDENCE, None, [], [], llm)
 
     citations = parse_citations(text, len(chunks))

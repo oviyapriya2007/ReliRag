@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { USE_MOCK } from '../../api/client'
 
 function AppShell() {
   return (
@@ -56,7 +57,7 @@ function AppShell() {
 
         <div className="absolute bottom-8 left-6 right-6 text-sm">
         <div className="font-medium">● System Status</div>
-        <div className="mt-1 ml-4 opacity-70">Mock API</div>
+        <div className="mt-1 ml-4 opacity-70">{USE_MOCK ? 'Mock API' : 'Live API'}</div>
         </div>
       </aside>
 

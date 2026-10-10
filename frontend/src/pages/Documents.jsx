@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { getDocuments } from '../../api/client'
+import { deleteDocument, getDocuments, uploadDocument } from '../../api/client'
 
 function Documents() {
   const [documents, setDocuments] = useState([])
   const [selectedFile, setSelectedFile] = useState(null)
   const [documentToDelete, setDocumentToDelete] = useState(null)
+  const [busy, setBusy] = useState(false)
 
   const fileInputRef = useRef(null)
 
@@ -46,16 +47,32 @@ function Documents() {
     handleFileSelection(event.dataTransfer.files[0])
   }
 
-  // Temporary upload action
-  const handleUpload = () => {
+  const loadDocuments = () =>
+    getDocuments()
+      .then(setDocuments)
+      .catch((error) => {
+        console.error('Failed to load documents:', error)
+        alert(`Failed to load documents: ${error.message}`)
+      })
+
+  // Upload, extract, chunk and embed the selected PDF
+  const handleUpload = async () => {
     if (!selectedFile) {
       alert('Please select a PDF file first.')
       return
     }
 
-    alert(
-      'PDF selected successfully! Backend upload will be connected next.'
-    )
+    setBusy(true)
+    try {
+      await uploadDocument(selectedFile)
+      setSelectedFile(null)
+      await loadDocuments()
+    } catch (error) {
+      console.error('Upload failed:', error)
+      alert(`Upload failed: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   // Open delete confirmation
@@ -63,26 +80,29 @@ function Documents() {
     setDocumentToDelete(document)
   }
 
-  // Delete a mock document from the screen
-  const confirmDelete = () => {
+  // Delete the document and its chunks on the server
+  const confirmDelete = async () => {
     if (!documentToDelete) return
 
-    setDocuments((currentDocuments) =>
-      currentDocuments.filter(
-        (document) => document.id !== documentToDelete.id
+    setBusy(true)
+    try {
+      await deleteDocument(documentToDelete.id)
+      setDocuments((currentDocuments) =>
+        currentDocuments.filter(
+          (document) => document.id !== documentToDelete.id
+        )
       )
-    )
-
-    setDocumentToDelete(null)
+      setDocumentToDelete(null)
+    } catch (error) {
+      console.error('Delete failed:', error)
+      alert(`Delete failed: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
-  // Load mock documents
   useEffect(() => {
-    getDocuments()
-      .then(setDocuments)
-      .catch((error) => {
-        console.error('Failed to load documents:', error)
-      })
+    loadDocuments()
   }, [])
 
   return (
@@ -184,16 +204,18 @@ function Documents() {
             <button
               type="button"
               onClick={handleUpload}
-              className="mt-4 rounded-lg px-5 py-2 font-semibold text-white transition hover:opacity-90"
+              disabled={busy}
+              className="mt-4 rounded-lg px-5 py-2 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               style={{ backgroundColor: '#554188' }}
             >
-              Upload PDF
+              {busy ? 'Uploading and indexing…' : 'Upload PDF'}
             </button>
 
             <button
               type="button"
               onClick={() => setSelectedFile(null)}
-              className="ml-3 mt-4 rounded-lg border px-5 py-2 font-semibold transition hover:bg-gray-100"
+              disabled={busy}
+              className="ml-3 mt-4 rounded-lg border px-5 py-2 font-semibold transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
               style={{
                 borderColor: '#D5CEDB',
                 color: '#554188',
@@ -285,7 +307,7 @@ function Documents() {
                     className="px-5 py-10 text-center"
                     style={{ color: '#777777' }}
                   >
-                    No documents available. Upload functionality will be connected to the backend next.
+                    No documents available. Upload a PDF to get started.
                   </td>
                 </tr>
               )}
@@ -317,11 +339,11 @@ function Documents() {
 
             <p className="mt-3 text-sm" style={{ color: '#555555' }}>
               Are you sure you want to remove{' '}
-              <strong>{documentToDelete.name}</strong> from this mock list?
+              <strong>{documentToDelete.name}</strong>?
             </p>
 
             <p className="mt-2 text-xs" style={{ color: '#888888' }}>
-              This action only changes the current frontend list. No server file is deleted.
+              The document and all of its indexed chunks will be permanently deleted.
             </p>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -340,10 +362,11 @@ function Documents() {
               <button
                 type="button"
                 onClick={confirmDelete}
-                className="rounded-lg px-4 py-2 font-semibold text-white"
+                disabled={busy}
+                className="rounded-lg px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                 style={{ backgroundColor: '#B4233D' }}
               >
-                Confirm Delete
+                {busy ? 'Deleting…' : 'Confirm Delete'}
               </button>
             </div>
           </div>
