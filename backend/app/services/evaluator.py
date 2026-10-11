@@ -232,7 +232,7 @@ def evaluate_answer(
     max_tokens: int | None = None,
     model: str | None = None,
 ) -> EvaluationResult:
-    """Verify `answer` claim by claim against `chunks` and score it via Claude (temperature 0).
+    """Verify `answer` claim by claim against `chunks` and score it via Claude.
 
     Faithfulness is computed here from the verified verdicts; Claude only scores answer and
     context relevance. An invalid reply is retried up to EVALUATOR_MAX_PARSE_ATTEMPTS calls in
@@ -256,7 +256,7 @@ def evaluate_answer(
     started = time.perf_counter()
     try:
         for attempt in range(1, settings.evaluator_max_parse_attempts + 1):
-            llm = call_claude(request, system=SYSTEM_PROMPT, temperature=0,
+            llm = call_claude(request, system=SYSTEM_PROMPT,
                               max_tokens=max_tokens or settings.evaluator_max_tokens,
                               model=model or settings.evaluator_model or None)
             calls.append(llm)

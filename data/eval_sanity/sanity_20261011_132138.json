@@ -1,0 +1,556 @@
+{
+  "generated_at": "2026-10-11T13:21:38+05:30",
+  "read_only": true,
+  "claude_model": "claude-sonnet-4-5",
+  "pass_threshold": 0.8,
+  "note": "quote_presence checks only confirm a quote occurs in its cited chunk; semantic_support checks (negative cases) test whether false claims were still judged supported.",
+  "saved_answers": [],
+  "negatives": [
+    {
+      "case": "udp_guarantees_delivery",
+      "description": "Contradicted claim: the evidence says UDP has no built-in delivery guarantees.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "UDP guarantees delivery [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 0.0,
+        "answer_relevance": 0.0,
+        "context_relevance": 1.0
+      },
+      "passed": false,
+      "failure_type": "unsupported_claim",
+      "feedback": "The answer directly contradicts the passages and does not address the question. Passage [1] explicitly states that 'UDP sends independent datagrams without built-in delivery guarantees or ordering,' which is the opposite of what the answer claims. The answer also fails to explain the main difference between TCP and UDP, which is that TCP provides reliable, ordered delivery with connection establishment and flow control, while UDP does not.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "UDP guarantees delivery",
+          "verdict": "unsupported",
+          "claude_verdict": "unsupported",
+          "evidence_chunk_id": null,
+          "evidence_rank": null,
+          "evidence_quote": null,
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "unsupported": 1
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1587,
+        "output_tokens": 195,
+        "latency_ms": 4123,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 13
+    },
+    {
+      "case": "mixed_true_false",
+      "description": "One grounded TCP claim plus a contradicted UDP claim.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "TCP provides a reliable, ordered byte stream [1]. UDP guarantees delivery and ordering [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 0.5,
+        "answer_relevance": 0.5,
+        "context_relevance": 1.0
+      },
+      "passed": false,
+      "failure_type": "unsupported_claim",
+      "feedback": "The answer contains a critical factual error: it claims UDP guarantees delivery and ordering, when the passage explicitly states UDP sends datagrams 'without built-in delivery guarantees or ordering.' The answer addresses the question by contrasting TCP and UDP, but the incorrect characterization of UDP makes it misleading and incomplete.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "TCP provides a reliable, ordered byte stream",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 97,
+          "evidence_rank": 1,
+          "evidence_quote": "TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control.",
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "UDP guarantees delivery and ordering",
+          "verdict": "unsupported",
+          "claude_verdict": "unsupported",
+          "evidence_chunk_id": null,
+          "evidence_rank": null,
+          "evidence_quote": null,
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "supported": 1,
+        "unsupported": 1
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1600,
+        "output_tokens": 208,
+        "latency_ms": 3820,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 14
+    },
+    {
+      "case": "overreach",
+      "description": "Grounded statement extended with an ungrounded comparison.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "UDP sends independent datagrams and is always faster than TCP [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 0.5,
+        "answer_relevance": 0.25,
+        "context_relevance": 1.0
+      },
+      "passed": false,
+      "failure_type": "unsupported_claim",
+      "feedback": "The answer contains an unsupported claim that UDP is always faster than TCP, which is not stated in the passages. The answer also fails to address the main question by omitting TCP's key characteristics (reliable, ordered byte stream, connection establishment, acknowledgements, retransmission, flow control) and UDP's lack of delivery guarantees and ordering, which constitute the core difference between the two protocols.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "UDP sends independent datagrams",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 97,
+          "evidence_rank": 1,
+          "evidence_quote": "UDP sends independent datagrams without built-in delivery guarantees or ordering.",
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "UDP is always faster than TCP",
+          "verdict": "unsupported",
+          "claude_verdict": "unsupported",
+          "evidence_chunk_id": null,
+          "evidence_rank": null,
+          "evidence_quote": null,
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "supported": 1,
+        "unsupported": 1
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1595,
+        "output_tokens": 249,
+        "latency_ms": 4073,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 14
+    },
+    {
+      "case": "off_topic",
+      "description": "Grounded sentence that does not answer the DHCP question.",
+      "question": "What information can DHCP provide to a client?",
+      "answer_text": "DNS queries often use UDP [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "missing_info"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 1.0,
+        "answer_relevance": 0.0,
+        "context_relevance": 0.0
+      },
+      "passed": false,
+      "failure_type": "missing_info",
+      "feedback": "The answer is completely off-topic. The question asks what information DHCP can provide to a client, but the answer discusses DNS and UDP instead. The provided passages contain no information about DHCP at all, making them irrelevant to the question.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "DNS queries often use UDP",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 97,
+          "evidence_rank": 1,
+          "evidence_quote": "DNS queries often use UDP",
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "supported": 1
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1589,
+        "output_tokens": 133,
+        "latency_ms": 2994,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 12
+    },
+    {
+      "case": "wrong_evidence",
+      "description": "Correct TCP/UDP answer evaluated against unrelated (attachment safety) chunks.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "TCP provides a reliable, ordered byte stream, while UDP sends independent datagrams without built-in delivery guarantees or ordering [1].",
+      "evidence_answer_id": 15,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim",
+        "irrelevant_retrieval"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 128,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 20,
+          "similarity": 0.32955678349056683
+        },
+        {
+          "rank": 2,
+          "chunk_id": 127,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 20,
+          "similarity": 0.21734247000903406
+        },
+        {
+          "rank": 3,
+          "chunk_id": 146,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.21229486616911253
+        },
+        {
+          "rank": 4,
+          "chunk_id": 120,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 16,
+          "similarity": 0.20471790972734716
+        },
+        {
+          "rank": 5,
+          "chunk_id": 148,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 30,
+          "similarity": 0.19615521178779605
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 0.0,
+        "answer_relevance": 1.0,
+        "context_relevance": 0.0
+      },
+      "passed": false,
+      "failure_type": "unsupported_claim",
+      "feedback": "The answer directly addresses the question about the main difference between TCP and UDP, but both factual claims are completely unsupported by the provided passages. The passages discuss endpoint security, network monitoring, and access controls, but contain no information about TCP or UDP protocols. The citation marker [1] does not correspond to any relevant content about these protocols.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "TCP provides a reliable, ordered byte stream",
+          "verdict": "unsupported",
+          "claude_verdict": "unsupported",
+          "evidence_chunk_id": null,
+          "evidence_rank": null,
+          "evidence_quote": null,
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "UDP sends independent datagrams without built-in delivery guarantees or ordering",
+          "verdict": "unsupported",
+          "claude_verdict": "unsupported",
+          "evidence_chunk_id": null,
+          "evidence_rank": null,
+          "evidence_quote": null,
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "unsupported": 2
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1363,
+        "output_tokens": 195,
+        "latency_ms": 3825,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 15
+    },
+    {
+      "case": "grounded_control",
+      "description": "Sentences copied from the TCP/UDP passage; should pass.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control [1]. UDP sends independent datagrams without built-in delivery guarantees or ordering [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": true,
+      "allowed_failure_types": [],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluated_pass",
+      "scores": {
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "context_relevance": 1.0
+      },
+      "passed": true,
+      "failure_type": null,
+      "feedback": "The answer is fully grounded in the passages and directly addresses the question by clearly contrasting TCP's reliability mechanisms with UDP's lack of built-in delivery guarantees. All claims are explicitly supported by passage 1, and the passages contain all necessary information to answer the question completely.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 97,
+          "evidence_rank": 1,
+          "evidence_quote": "TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control.",
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "UDP sends independent datagrams without built-in delivery guarantees or ordering.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 97,
+          "evidence_rank": 1,
+          "evidence_quote": "UDP sends independent datagrams without built-in delivery guarantees or ordering.",
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "supported": 2
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1627,
+        "output_tokens": 241,
+        "latency_ms": 4006,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 12
+    }
+  ],
+  "summary": {
+    "evaluations": 6,
+    "outcomes": {
+      "evaluated_fail": 5,
+      "evaluated_pass": 1
+    },
+    "evaluator_errors": [],
+    "integrity_failures": [],
+    "quote_presence_failures": [],
+    "semantic_support_failures": [],
+    "expectation_failures": [],
+    "ok": true
+  }
+}

@@ -1,0 +1,521 @@
+{
+  "generated_at": "2026-10-11T13:32:57+05:30",
+  "read_only": true,
+  "claude_model": "claude-sonnet-4-5",
+  "pass_threshold": 0.8,
+  "note": "quote_presence checks only confirm a quote occurs in its cited chunk; semantic_support checks (negative cases) test whether false claims were still judged supported.",
+  "saved_answers": [
+    {
+      "answer_id": 7,
+      "query_id": 7,
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_status": "ANSWERED",
+      "legacy_refusal_text": false,
+      "answer_text": "The main difference between TCP and UDP is that TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control, while UDP sends independent datagrams without built-in delivery guarantees or ordering [1].",
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 4 03. TCP and UDP TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control. UDP sends independent datagrams without built-in delivery guarantees or ordering. DNS queries often use UDP, while applications may use TCP for larger responses or specific operational needs. The application determines which transport is appropriate. Key points • TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control. • UDP sends independent datagrams without built-in delivery guarantees or ordering. • DNS queries often use UDP, while applications may use TCP for larger responses or specifi"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515,
+          "text": "atagrams without built-in delivery guarantees or ordering. • DNS queries often use UDP, while applications may use TCP for larger responses or specific operational needs. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 3 02. OSI Reference Model The OSI model describes communication in seven layers: Physical, Data Link, Network, Transport, Session, Presentation, and Application. Ethernet framing is associated with the Data Link layer, IP routing with the Network layer, and TCP/UDP with the Transport layer. The model is a troubleshooting aid, not a requirement that every protocol map perfectly to one layer. Key points • The OSI model describes communication in seven layers: Physical, Data Link, Network, Transport, Session, Presentation, and Application. • Ethernet framing is associated with the Data Link layer, IP routing with the Network layer, and TCP/UDP with the Transport layer. • The model is a troubleshooting aid, not a requirement that every protocol "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046,
+          "text": " IP routing with the Network layer, and TCP/UDP with the Transport layer. • The model is a troubleshooting aid, not a requirement that every protocol map perfectly to one layer. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 29 28. Packet Capture Basics Packet captures provide evidence about protocols, timing, retransmissions, handshakes, and failures. Captures may contain sensitive information and should be collected with authorization, minimized, stored securely, and deleted according to policy. A capture is a view of observed traffic, not necessarily a complete representation of all network activity. Key points • Packet captures provide evidence about protocols, timing, retransmissions, handshakes, and failures. • Captures may contain sensitive information and should be collected with authorization, minimized, stored securely, and deleted according to policy. • A capture is a view of observed traffic, not necessarily a complete representation of all network a"
+        }
+      ],
+      "outcome": "evaluated_pass",
+      "scores": {
+        "faithfulness": 1.0,
+        "answer_relevance": 1.0,
+        "context_relevance": 1.0
+      },
+      "passed": true,
+      "failure_type": null,
+      "feedback": "The answer is fully grounded in the passages and directly addresses the question by accurately contrasting TCP's reliability features with UDP's lack of delivery guarantees. All claims are explicitly supported by passage [1].",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 97,
+          "evidence_rank": 1,
+          "evidence_quote": "TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control.",
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "UDP sends independent datagrams without built-in delivery guarantees or ordering.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 97,
+          "evidence_rank": 1,
+          "evidence_quote": "UDP sends independent datagrams without built-in delivery guarantees or ordering.",
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "supported": 2
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1635,
+        "output_tokens": 225,
+        "latency_ms": 4132,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 11
+    },
+    {
+      "answer_id": 20,
+      "query_id": 20,
+      "question": "wat is network security",
+      "answer_status": "ANSWERED",
+      "legacy_refusal_text": false,
+      "answer_text": "Based on the provided context, I cannot give you a complete definition of \"network security\" because none of the passages explicitly define this term [INSUFFICIENT_EVIDENCE].\n\nHowever, the context does describe various network security practices and concepts:\n\n- Network design should balance performance, availability, security, cost, and manageability [3]\n- Wi-Fi security uses protocols like WPA2-AES and WPA3, with strong credentials, modern encryption, and firmware updates to reduce risk [1]\n- VPNs create protected tunnels over untrusted networks with encryption to protect traffic [2]\n- Network segmentation limits unnecessary communication between different systems and can reduce lateral movement [5]\n- Secure remote administration requires approved secure protocols, strong authentication, and restricted access [4]\n\nThese passages describe security measures and controls but do not provide an explicit definition of what network security is overall.",
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 113,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 13,
+          "similarity": 0.4721942999305059,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 13 12. Wi-Fi Security WPA2-AES and WPA3 are common Wi-Fi security options. Strong unique credentials, modern encryption, firmware updates, and disabling obsolete protocols reduce risk. Enterprise deployments may use 802.1X with an authentication server rather than a shared password. Guest access should be separated from sensitive internal systems. Key points • WPA2-AES and WPA3 are common Wi-Fi security options. • Strong unique credentials, modern encryption, firmware updates, and disabling obsolete protocols reduce risk. • Enterprise deployments may use 802.1X with an authentication server rather than a shared password. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify w"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 119,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 16,
+          "similarity": 0.46199707800158807,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 16 15. VPN Concepts A virtual private network creates a protected tunnel over an untrusted network. Remote-access VPNs connect individual users; site-to-site VPNs connect networks. Encryption protects traffic in transit, but weak credentials, compromised endpoints, overly broad routes, or poor authorization can still expose resources. Split tunneling changes which traffic travels through the tunnel. Key points • A virtual private network creates a protected tunnel over an untrusted network. • Remote-access VPNs connect individual users; site-to-site VPNs connect networks. • Encryption protects traffic in transit, but weak credentials, compromised endpoints, overly broad routes, or poor authorization can still expose resources. Evaluation not"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 93,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 2,
+          "similarity": 0.4509028389242784,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 2 01. Network Fundamentals A computer network connects devices so they can exchange data and share resources. Networks are commonly described by scope: PAN, LAN, MAN, and WAN. A LAN typically serves a room, building, or campus; a WAN connects geographically separated networks. Network design balances performance, availability, security, cost, and manageability. Key points • A computer network connects devices so they can exchange data and share resources. • Networks are commonly described by scope: PAN, LAN, MAN, and WAN. • A LAN typically serves a room, building, or campus; a WAN connects geographically separated networks. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identif"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 147,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 30,
+          "similarity": 0.3846508310423046,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 30 29. Secure Remote Administration Administrative access should use approved secure protocols, strong authentication, restricted source networks, and dedicated accounts. Management interfaces should not be exposed broadly to the internet. Administrative actions should be logged, and emergency access should be controlled and reviewed. Default credentials and unnecessary management services should be removed. Key points • Administrative access should use approved secure protocols, strong authentication, restricted source networks, and dedicated accounts. • Management interfaces should not be exposed broadly to the internet. • Administrative actions should be logged, and emergency access should be controlled and reviewed. Evaluation note: A su"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 117,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 15,
+          "similarity": 0.3832756097100858,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 15 14. Network Segmentation Segmentation limits unnecessary communication between user devices, servers, management interfaces, and guest systems. VLANs provide Layer 2 separation, while routing and firewall rules enforce communication policy between segments. Segmentation can reduce lateral movement but does not replace endpoint security, identity controls, patching, or monitoring. Key points • Segmentation limits unnecessary communication between user devices, servers, management interfaces, and guest systems. • VLANs provide Layer 2 separation, while routing and firewall rules enforce communication policy between segments. • Segmentation can reduce lateral movement but does not replace endpoint security, identity controls, patching, or mo"
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 0.875,
+        "answer_relevance": 0.5,
+        "context_relevance": 0.25
+      },
+      "passed": false,
+      "failure_type": "missing_info",
+      "feedback": "The answer acknowledges that the passages do not provide a direct definition of network security, which is accurate. However, the question asks 'what is network security' and expects a conceptual definition. While the answer lists various security practices, it does not attempt to synthesize these into a cohesive explanation of the concept. The passages contain information about specific security measures but lack a foundational definition of network security itself, making it difficult to fully answer the question. 1 claim(s) cited evidence that could not be verified against the retrieved chunks and were marked unsupported.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "None of the passages explicitly define the term 'network security'.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 93,
+          "evidence_rank": 3,
+          "evidence_quote": "A computer network connects devices so they can exchange data and share resources.",
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "Network design should balance performance, availability, security, cost, and manageability.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 93,
+          "evidence_rank": 3,
+          "evidence_quote": "Network design balances performance, availability, security, cost, and manageability.",
+          "evidence_error": null
+        },
+        {
+          "index": 3,
+          "claim_text": "Wi-Fi security uses protocols like WPA2-AES and WPA3.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 113,
+          "evidence_rank": 1,
+          "evidence_quote": "WPA2-AES and WPA3 are common Wi-Fi security options.",
+          "evidence_error": null
+        },
+        {
+          "index": 4,
+          "claim_text": "Wi-Fi security uses strong credentials, modern encryption, and firmware updates to reduce risk.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 113,
+          "evidence_rank": 1,
+          "evidence_quote": "Strong unique credentials, modern encryption, firmware updates, and disabling obsolete protocols reduce risk.",
+          "evidence_error": null
+        },
+        {
+          "index": 5,
+          "claim_text": "VPNs create protected tunnels over untrusted networks with encryption to protect traffic.",
+          "verdict": "unsupported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": null,
+          "evidence_rank": null,
+          "evidence_quote": null,
+          "evidence_error": "evidence_quote does not appear in chunk 119"
+        },
+        {
+          "index": 6,
+          "claim_text": "Network segmentation limits unnecessary communication between different systems.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 117,
+          "evidence_rank": 5,
+          "evidence_quote": "Segmentation limits unnecessary communication between user devices, servers, management interfaces, and guest systems.",
+          "evidence_error": null
+        },
+        {
+          "index": 7,
+          "claim_text": "Network segmentation can reduce lateral movement.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 117,
+          "evidence_rank": 5,
+          "evidence_quote": "Segmentation can reduce lateral movement",
+          "evidence_error": null
+        },
+        {
+          "index": 8,
+          "claim_text": "Secure remote administration requires approved secure protocols, strong authentication, and restricted access.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 147,
+          "evidence_rank": 4,
+          "evidence_quote": "Administrative access should use approved secure protocols, strong authentication, restricted source networks, and dedicated accounts.",
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "supported": 7,
+        "unsupported": 1
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1957,
+        "output_tokens": 624,
+        "latency_ms": 9233,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 16
+    },
+    {
+      "answer_id": 12,
+      "query_id": 12,
+      "question": "What is the current password for my university Wi-Fi?",
+      "answer_status": "ANSWERED",
+      "legacy_refusal_text": true,
+      "answer_text": "INSUFFICIENT_EVIDENCE\n\nThe context passages discuss Wi-Fi security best practices, such as using strong unique credentials [1], WPA2-AES and WPA3 encryption [1], and 802.1X authentication for enterprise deployments [1], but they do not contain any specific password information for any university Wi-Fi network.",
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 113,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 13,
+          "similarity": 0.5144123128406825,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 13 12. Wi-Fi Security WPA2-AES and WPA3 are common Wi-Fi security options. Strong unique credentials, modern encryption, firmware updates, and disabling obsolete protocols reduce risk. Enterprise deployments may use 802.1X with an authentication server rather than a shared password. Guest access should be separated from sensitive internal systems. Key points • WPA2-AES and WPA3 are common Wi-Fi security options. • Strong unique credentials, modern encryption, firmware updates, and disabling obsolete protocols reduce risk. • Enterprise deployments may use 802.1X with an authentication server rather than a shared password. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify w"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 111,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 12,
+          "similarity": 0.3937975764274597,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 12 11. Wireless LAN Basics Wi-Fi networks use radio channels and access points to connect clients. Signal quality, interference, channel overlap, client density, and roaming behavior affect performance. A strong signal does not guarantee a fast connection because airtime is shared. Troubleshooting should distinguish authentication failure, association failure, DHCP failure, DNS failure, and poor application performance. Key points • Wi-Fi networks use radio channels and access points to connect clients. • Signal quality, interference, channel overlap, client density, and roaming behavior affect performance. • A strong signal does not guarantee a fast connection because airtime is shared. Evaluation note: A supported answer should stay within"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 114,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 13,
+          "similarity": 0.3830001950263977,
+          "text": "her than a shared password. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        },
+        {
+          "rank": 4,
+          "chunk_id": 124,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 18,
+          "similarity": 0.2601417601108551,
+          "text": "ce. • MFA reduces risk from stolen passwords, although phishing-resistant methods provide stronger protection than one-time codes in many threat scenarios. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        },
+        {
+          "rank": 5,
+          "chunk_id": 147,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 30,
+          "similarity": 0.259413913453455,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 30 29. Secure Remote Administration Administrative access should use approved secure protocols, strong authentication, restricted source networks, and dedicated accounts. Management interfaces should not be exposed broadly to the internet. Administrative actions should be logged, and emergency access should be controlled and reviewed. Default credentials and unnecessary management services should be removed. Key points • Administrative access should use approved secure protocols, strong authentication, restricted source networks, and dedicated accounts. • Management interfaces should not be exposed broadly to the internet. • Administrative actions should be logged, and emergency access should be controlled and reviewed. Evaluation note: A su"
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 0.8,
+        "answer_relevance": 1.0,
+        "context_relevance": 0.0
+      },
+      "passed": false,
+      "failure_type": "irrelevant_retrieval",
+      "feedback": "The answer correctly identifies that the passages do not contain the specific password requested. The answer is appropriately evasive because the question asks for information (a specific university Wi-Fi password) that cannot be found in the passages, which only discuss general Wi-Fi security principles. The passages are completely unrelated to providing any specific password. 1 claim(s) cited evidence that could not be verified against the retrieved chunks and were marked unsupported.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "The context passages discuss Wi-Fi security best practices.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 113,
+          "evidence_rank": 1,
+          "evidence_quote": "WPA2-AES and WPA3 are common Wi-Fi security options. Strong unique credentials, modern encryption, firmware updates, and disabling obsolete protocols reduce risk.",
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "Wi-Fi security best practices include using strong unique credentials.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 113,
+          "evidence_rank": 1,
+          "evidence_quote": "Strong unique credentials, modern encryption, firmware updates, and disabling obsolete protocols reduce risk.",
+          "evidence_error": null
+        },
+        {
+          "index": 3,
+          "claim_text": "Wi-Fi security best practices include using WPA2-AES and WPA3 encryption.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 113,
+          "evidence_rank": 1,
+          "evidence_quote": "WPA2-AES and WPA3 are common Wi-Fi security options.",
+          "evidence_error": null
+        },
+        {
+          "index": 4,
+          "claim_text": "Wi-Fi security best practices include using 802.1X authentication for enterprise deployments.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 113,
+          "evidence_rank": 1,
+          "evidence_quote": "Enterprise deployments may use 802.1X with an authentication server rather than a shared password.",
+          "evidence_error": null
+        },
+        {
+          "index": 5,
+          "claim_text": "The passages do not contain any specific password information for any university Wi-Fi network.",
+          "verdict": "unsupported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": null,
+          "evidence_rank": null,
+          "evidence_quote": null,
+          "evidence_error": "evidence_quote does not appear in chunk 113"
+        }
+      ],
+      "verdict_counts": {
+        "supported": 4,
+        "unsupported": 1
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1592,
+        "output_tokens": 461,
+        "latency_ms": 6744,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 13
+    },
+    {
+      "answer_id": 15,
+      "query_id": 15,
+      "question": "Can I safely open this attachment?",
+      "answer_status": "ANSWERED",
+      "legacy_refusal_text": true,
+      "answer_text": "INSUFFICIENT_EVIDENCE\n\nThe provided context does not contain information about evaluating the safety of specific email attachments or files. While the context discusses endpoint security controls like anti-malware and endpoint detection [2], and notes that endpoint tools are not a guarantee of safety and suspicious behavior requires investigation [1][2], it does not provide guidance on how to determine whether a particular attachment is safe to open.",
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 128,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 20,
+          "similarity": 0.32955678349056683,
+          "text": "n endpoint tool is not a guarantee of safety; suspicious behavior still requires investigation and response. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        },
+        {
+          "rank": 2,
+          "chunk_id": 127,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 20,
+          "similarity": 0.21734247000903406,
+          "text": "RELI-RAG Benchmark Reference • Demo dataset Page 20 19. Endpoint Security Endpoint controls include timely patching, anti-malware or endpoint detection, host firewalls, disk encryption, secure configuration, and least-privilege user accounts. Controls should be centrally monitored where possible. An endpoint tool is not a guarantee of safety; suspicious behavior still requires investigation and response. Key points • Endpoint controls include timely patching, anti-malware or endpoint detection, host firewalls, disk encryption, secure configuration, and least-privilege user accounts. • Controls should be centrally monitored where possible. • An endpoint tool is not a guarantee of safety; suspicious behavior still requires investigation and response. Evaluation note: A supported answer shoul"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 146,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.21229486616911253,
+          "text": "tored securely, and deleted according to policy. • A capture is a view of observed traffic, not necessarily a complete representation of all network activity. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        },
+        {
+          "rank": 4,
+          "chunk_id": 120,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 16,
+          "similarity": 0.20471790972734716,
+          "text": "traffic in transit, but weak credentials, compromised endpoints, overly broad routes, or poor authorization can still expose resources. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        },
+        {
+          "rank": 5,
+          "chunk_id": 148,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 30,
+          "similarity": 0.19615521178779605,
+          "text": "osed broadly to the internet. • Administrative actions should be logged, and emergency access should be controlled and reviewed. Evaluation note: A supported answer should stay within these statements, avoid adding ungrounded specifics, and identify when the source does not provide enough information."
+        }
+      ],
+      "outcome": "evaluated_fail",
+      "scores": {
+        "faithfulness": 1.0,
+        "answer_relevance": 0.75,
+        "context_relevance": 0.25
+      },
+      "passed": false,
+      "failure_type": "missing_info",
+      "feedback": "The answer correctly identifies that the passages lack specific guidance on evaluating email attachment safety. All claims are supported. However, the answer could more directly address the question by stating that it cannot be answered based on the available information. The passages are only loosely related to the specific question about attachment safety, focusing instead on general endpoint security controls.",
+      "claims": [
+        {
+          "index": 1,
+          "claim_text": "The provided context does not contain information about evaluating the safety of specific email attachments or files.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 127,
+          "evidence_rank": 2,
+          "evidence_quote": "Endpoint controls include timely patching, anti-malware or endpoint detection, host firewalls, disk encryption, secure configuration, and least-privilege user accounts.",
+          "evidence_error": null
+        },
+        {
+          "index": 2,
+          "claim_text": "The context discusses endpoint security controls like anti-malware and endpoint detection.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 127,
+          "evidence_rank": 2,
+          "evidence_quote": "Endpoint controls include timely patching, anti-malware or endpoint detection, host firewalls, disk encryption, secure configuration, and least-privilege user accounts.",
+          "evidence_error": null
+        },
+        {
+          "index": 3,
+          "claim_text": "Endpoint tools are not a guarantee of safety.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 128,
+          "evidence_rank": 1,
+          "evidence_quote": "n endpoint tool is not a guarantee of safety; suspicious behavior still requires investigation and response.",
+          "evidence_error": null
+        },
+        {
+          "index": 4,
+          "claim_text": "Suspicious behavior requires investigation.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 128,
+          "evidence_rank": 1,
+          "evidence_quote": "n endpoint tool is not a guarantee of safety; suspicious behavior still requires investigation and response.",
+          "evidence_error": null
+        },
+        {
+          "index": 5,
+          "claim_text": "The context does not provide guidance on how to determine whether a particular attachment is safe to open.",
+          "verdict": "supported",
+          "claude_verdict": "supported",
+          "evidence_chunk_id": 127,
+          "evidence_rank": 2,
+          "evidence_quote": "Endpoint controls include timely patching, anti-malware or endpoint detection, host firewalls, disk encryption, secure configuration, and least-privilege user accounts.",
+          "evidence_error": null
+        }
+      ],
+      "verdict_counts": {
+        "supported": 5
+      },
+      "usage": {
+        "model": "claude-sonnet-4-5-20250929",
+        "input_tokens": 1415,
+        "output_tokens": 464,
+        "latency_ms": 6611,
+        "llm_calls": 1
+      },
+      "ok": true,
+      "failed_checks": [],
+      "checks_run": 14
+    }
+  ],
+  "negatives": [],
+  "summary": {
+    "evaluations": 4,
+    "outcomes": {
+      "evaluated_pass": 1,
+      "evaluated_fail": 3
+    },
+    "evaluator_errors": [],
+    "integrity_failures": [],
+    "quote_presence_failures": [],
+    "semantic_support_failures": [],
+    "expectation_failures": [],
+    "ok": true
+  }
+}

@@ -119,7 +119,7 @@ class EvaluateAnswerTest(unittest.TestCase):
         result, claude = self.evaluate(reply())
 
         claude.assert_called_once()
-        self.assertEqual(claude.call_args.kwargs["temperature"], 0)
+        self.assertNotIn("temperature", claude.call_args.kwargs)
         prompt = claude.call_args.args[0]
         self.assertIn("chunk_id=41", prompt)
         self.assertIn("chunk_id=57", prompt)
@@ -174,7 +174,7 @@ class EvaluateAnswerTest(unittest.TestCase):
         retry_prompt = claude.call_args_list[1].args[0]
         self.assertTrue(retry_prompt.startswith(claude.call_args_list[0].args[0]))
         self.assertIn(RETRY_INSTRUCTION.splitlines()[1], retry_prompt)
-        self.assertEqual(claude.call_args_list[1].kwargs["temperature"], 0)
+        self.assertNotIn("temperature", claude.call_args_list[1].kwargs)
         self.assertTrue(result.passed)
         self.assertEqual((result.input_tokens, result.output_tokens, result.llm_calls),
                          (600, 160, 2))

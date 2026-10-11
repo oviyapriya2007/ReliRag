@@ -445,7 +445,8 @@ def run_evaluation(question: str, answer: str,
 
 def chunk_summary(chunks: Sequence[RetrievedChunk]) -> list[dict]:
     return [{"rank": rank, "chunk_id": c.chunk_id, "document": c.document, "page": c.page,
-             "similarity": c.similarity} for rank, c in enumerate(chunks, start=1)]
+             "similarity": c.similarity, "text": c.text}
+            for rank, c in enumerate(chunks, start=1)]
 
 
 def evaluation_record(result: EvaluationResult | None, error: str | None,

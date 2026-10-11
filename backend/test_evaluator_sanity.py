@@ -404,7 +404,12 @@ class SanityRunnerTest(unittest.TestCase):
         self.assertEqual(record["outcome"], sanity.EVALUATED_PASS)
         self.assertEqual(record["scores"], {"faithfulness": 1.0, "answer_relevance": 0.9,
                                             "context_relevance": 0.9})
-        self.assertEqual([c["chunk_id"] for c in record["chunks"]], [97, 98])
+        self.assertEqual(record["chunks"], [
+            {"rank": 1, "chunk_id": 97, "document": "benchmark.pdf", "page": 4,
+             "similarity": 0.5, "text": CHUNK_97},
+            {"rank": 2, "chunk_id": 98, "document": "benchmark.pdf", "page": 4,
+             "similarity": 0.5, "text": CHUNK_98},
+        ])
         self.assertEqual(record["claims"][0]["evidence_chunk_id"], 97)
         self.assertEqual(record["claims"][0]["evidence_rank"], 1)
         self.assertEqual(record["usage"]["input_tokens"], 300)
