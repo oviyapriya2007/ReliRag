@@ -1,5 +1,7 @@
 
 import { useState } from 'react'
+import { USE_MOCK } from '../../api/client'
+import NotAvailable from '../components/NotAvailable'
 
 const statusStyles = {
   PASSED: 'bg-green-100 text-green-800',
@@ -29,7 +31,7 @@ const claims = [
   },
 ]
 
-function Evaluation() {
+function EvaluationDemo() {
   const [selectedStatus, setSelectedStatus] = useState('CORRECTED')
 
   const scores = [
@@ -171,6 +173,20 @@ function Evaluation() {
         ))}
       </section>
     </div>
+  )
+}
+
+function Evaluation() {
+  if (USE_MOCK) {
+    return <EvaluationDemo />
+  }
+
+  return (
+    <NotAvailable
+      eyebrow="RELIABILITY ANALYSIS"
+      title="Evaluation Details"
+      description="Inspect answer quality, verify individual claims, and review correction status."
+    />
   )
 }
 

@@ -15,8 +15,9 @@ const COLORS = {
   indigo: "#7080DA",
 };
 
-const INSUFFICIENT_MESSAGE =
-  "The uploaded documents do not contain enough information to answer this question reliably.";
+// Shown only if an INSUFFICIENT_EVIDENCE response arrives without a final_answer.
+const INSUFFICIENT_FALLBACK_MESSAGE =
+  "I couldn't find enough evidence in the uploaded documents to answer this question.";
 
 // POST /query is a single request, so the "Generating" stage is shown after a short delay.
 const GENERATING_STAGE_DELAY_MS = 800;
@@ -186,7 +187,7 @@ export default function Ask() {
               id="reli-rag-question"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Example: What is network security?"
+              placeholder="Ask a question about the selected documents"
               rows={3}
               required
               className="w-full resize-y rounded-xl border border-[#BBADAD] bg-white p-4 text-sm text-gray-800 outline-none transition focus:border-[#554188] focus:ring-2 focus:ring-[#E5DBE6]"
@@ -318,7 +319,7 @@ export default function Ask() {
                   </h2>
 
                   <p className="mt-2 text-sm leading-6 text-gray-700">
-                    {INSUFFICIENT_MESSAGE}
+                    {answer || INSUFFICIENT_FALLBACK_MESSAGE}
                   </p>
 
                   <p className="mt-3 text-xs leading-5 text-gray-500">

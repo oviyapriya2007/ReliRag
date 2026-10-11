@@ -6,13 +6,14 @@ separates the two groups. Read-only: nothing is written to the database, and
 SIMILARITY_GATE is never changed automatically.
 
 Usage (from the project root or backend/):
-    python backend/calibrate_gate.py                                # built-in placeholder questions
     python backend/calibrate_gate.py --questions questions.json     # {"covered": [...], "out_of_scope": [...]}
     python backend/calibrate_gate.py --questions data/benchmark.json --doc-ids 8   # benchmark format
     python backend/calibrate_gate.py --covered "q1" "q2" --out-of-scope "q3" "q4"
-    python backend/calibrate_gate.py --doc-ids 7                    # restrict retrieval to documents
 
-Exits with status 0 when calibration ran, 1 on error.
+Questions are required (--questions, or both --covered and --out-of-scope) and must be
+written for the ingested documents; --doc-ids optionally restricts retrieval to documents.
+
+Exits with status 0 when calibration ran, 1 on error (including missing questions).
 """
 
 import argparse
@@ -39,27 +40,10 @@ BENCHMARK_CATEGORIES = {
     "out_of_scope": OUT_OF_SCOPE,
 }
 
-# ---------------------------------------------------------------------------
-# PLACEHOLDER QUESTIONS: written for the sample data/test.pdf ("Sample PDF Created
-# for testing PDFObject", mostly lorem ipsum). Replace with Person B's calibration
-# set via --questions once it exists.
-# ---------------------------------------------------------------------------
-PLACEHOLDER_QUESTIONS = {
-    COVERED: [
-        "How many pages long is the sample PDF?",
-        "What was this sample PDF created for testing?",
-        "Are the pages of this PDF long or short?",
-        "What does the document say about three long minutes?",
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit?",
-    ],
-    OUT_OF_SCOPE: [
-        "What is the capital of Mongolia?",
-        "How do I bake sourdough bread at home?",
-        "Who won the 2018 FIFA World Cup?",
-        "Explain how photosynthesis works in plants.",
-        "How many days of annual leave do full-time employees get?",
-    ],
-}
+MISSING_QUESTIONS_MESSAGE = (
+    "no calibration questions given: pass --questions FILE, or both --covered and "
+    "--out-of-scope, with questions written for the ingested documents"
+)
 
 
 @dataclass(frozen=True)
@@ -116,11 +100,13 @@ def load_questions(args: argparse.Namespace) -> dict[str, list[str]]:
     if args.questions:
         data = json.loads(Path(args.questions).read_text(encoding="utf-8-sig"))
         questions = parse_questions_file(data)
-    elif args.covered or args.out_of_scope:
-        questions = {COVERED: args.covered or [], OUT_OF_SCOPE: args.out_of_scope or []}
+    elif args.covered is not None or args.out_of_scope is not None:
+        questions = {
+            COVERED: _string_list(args.covered or [], "--covered"),
+            OUT_OF_SCOPE: _string_list(args.out_of_scope or [], "--out-of-scope"),
+        }
     else:
-        print("Using built-in PLACEHOLDER questions (pass --questions to use a real set).\n")
-        questions = PLACEHOLDER_QUESTIONS
+        raise ValueError(MISSING_QUESTIONS_MESSAGE)
 
     if not questions[COVERED] or not questions[OUT_OF_SCOPE]:
         raise ValueError("need at least one covered and one out-of-scope question")

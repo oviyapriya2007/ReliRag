@@ -1,8 +1,14 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter(
+    prefix="/analytics",
+    tags=["analytics"],
+    responses={status.HTTP_501_NOT_IMPLEMENTED: {"description": "Not implemented yet."}},
+)
+
+NOT_IMPLEMENTED_DETAIL = "Analytics are not implemented yet."
 
 
 @router.get("/summary")
 def get_summary():
-    return {"total_documents": 0, "total_queries": 0, "total_evaluations": 0}
+    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, NOT_IMPLEMENTED_DETAIL)

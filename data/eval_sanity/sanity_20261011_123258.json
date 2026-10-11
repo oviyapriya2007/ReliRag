@@ -1,0 +1,484 @@
+{
+  "generated_at": "2026-10-11T12:32:58+05:30",
+  "read_only": true,
+  "claude_model": "claude-sonnet-4-5",
+  "pass_threshold": 0.8,
+  "note": "quote_presence checks only confirm a quote occurs in its cited chunk; semantic_support checks (negative cases) test whether false claims were still judged supported.",
+  "saved_answers": [],
+  "negatives": [
+    {
+      "case": "udp_guarantees_delivery",
+      "description": "Contradicted claim: the evidence says UDP has no built-in delivery guarantees.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "UDP guarantees delivery [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluator_error",
+      "scores": {
+        "faithfulness": null,
+        "answer_relevance": null,
+        "context_relevance": null
+      },
+      "passed": false,
+      "failure_type": "evaluator_error",
+      "feedback": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'",
+      "claims": [],
+      "verdict_counts": {},
+      "usage": {
+        "model": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "latency_ms": 104,
+        "llm_calls": 0
+      },
+      "ok": false,
+      "failed_checks": [
+        {
+          "kind": "evaluator_error",
+          "name": "evaluated",
+          "ok": false,
+          "detail": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'"
+        }
+      ],
+      "checks_run": 4
+    },
+    {
+      "case": "mixed_true_false",
+      "description": "One grounded TCP claim plus a contradicted UDP claim.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "TCP provides a reliable, ordered byte stream [1]. UDP guarantees delivery and ordering [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluator_error",
+      "scores": {
+        "faithfulness": null,
+        "answer_relevance": null,
+        "context_relevance": null
+      },
+      "passed": false,
+      "failure_type": "evaluator_error",
+      "feedback": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'",
+      "claims": [],
+      "verdict_counts": {},
+      "usage": {
+        "model": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "latency_ms": 0,
+        "llm_calls": 0
+      },
+      "ok": false,
+      "failed_checks": [
+        {
+          "kind": "evaluator_error",
+          "name": "evaluated",
+          "ok": false,
+          "detail": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'"
+        }
+      ],
+      "checks_run": 4
+    },
+    {
+      "case": "overreach",
+      "description": "Grounded statement extended with an ungrounded comparison.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "UDP sends independent datagrams and is always faster than TCP [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluator_error",
+      "scores": {
+        "faithfulness": null,
+        "answer_relevance": null,
+        "context_relevance": null
+      },
+      "passed": false,
+      "failure_type": "evaluator_error",
+      "feedback": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'",
+      "claims": [],
+      "verdict_counts": {},
+      "usage": {
+        "model": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "latency_ms": 0,
+        "llm_calls": 0
+      },
+      "ok": false,
+      "failed_checks": [
+        {
+          "kind": "evaluator_error",
+          "name": "evaluated",
+          "ok": false,
+          "detail": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'"
+        }
+      ],
+      "checks_run": 4
+    },
+    {
+      "case": "off_topic",
+      "description": "Grounded sentence that does not answer the DHCP question.",
+      "question": "What information can DHCP provide to a client?",
+      "answer_text": "DNS queries often use UDP [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "missing_info"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluator_error",
+      "scores": {
+        "faithfulness": null,
+        "answer_relevance": null,
+        "context_relevance": null
+      },
+      "passed": false,
+      "failure_type": "evaluator_error",
+      "feedback": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'",
+      "claims": [],
+      "verdict_counts": {},
+      "usage": {
+        "model": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "latency_ms": 0,
+        "llm_calls": 0
+      },
+      "ok": false,
+      "failed_checks": [
+        {
+          "kind": "evaluator_error",
+          "name": "evaluated",
+          "ok": false,
+          "detail": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'"
+        }
+      ],
+      "checks_run": 4
+    },
+    {
+      "case": "wrong_evidence",
+      "description": "Correct TCP/UDP answer evaluated against unrelated (attachment safety) chunks.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "TCP provides a reliable, ordered byte stream, while UDP sends independent datagrams without built-in delivery guarantees or ordering [1].",
+      "evidence_answer_id": 15,
+      "expect_pass": false,
+      "allowed_failure_types": [
+        "unsupported_claim",
+        "irrelevant_retrieval"
+      ],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 128,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 20,
+          "similarity": 0.32955678349056683
+        },
+        {
+          "rank": 2,
+          "chunk_id": 127,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 20,
+          "similarity": 0.21734247000903406
+        },
+        {
+          "rank": 3,
+          "chunk_id": 146,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.21229486616911253
+        },
+        {
+          "rank": 4,
+          "chunk_id": 120,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 16,
+          "similarity": 0.20471790972734716
+        },
+        {
+          "rank": 5,
+          "chunk_id": 148,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 30,
+          "similarity": 0.19615521178779605
+        }
+      ],
+      "outcome": "evaluator_error",
+      "scores": {
+        "faithfulness": null,
+        "answer_relevance": null,
+        "context_relevance": null
+      },
+      "passed": false,
+      "failure_type": "evaluator_error",
+      "feedback": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'",
+      "claims": [],
+      "verdict_counts": {},
+      "usage": {
+        "model": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "latency_ms": 0,
+        "llm_calls": 0
+      },
+      "ok": false,
+      "failed_checks": [
+        {
+          "kind": "evaluator_error",
+          "name": "evaluated",
+          "ok": false,
+          "detail": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'"
+        }
+      ],
+      "checks_run": 4
+    },
+    {
+      "case": "grounded_control",
+      "description": "Sentences copied from the TCP/UDP passage; should pass.",
+      "question": "What is the main difference between TCP and UDP?",
+      "answer_text": "TCP provides a reliable, ordered byte stream using connection establishment, sequence numbers, acknowledgements, retransmission, and flow control [1]. UDP sends independent datagrams without built-in delivery guarantees or ordering [1].",
+      "evidence_answer_id": 7,
+      "expect_pass": true,
+      "allowed_failure_types": [],
+      "chunks": [
+        {
+          "rank": 1,
+          "chunk_id": 97,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.5574631857115983
+        },
+        {
+          "rank": 2,
+          "chunk_id": 98,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 4,
+          "similarity": 0.42860740423202515
+        },
+        {
+          "rank": 3,
+          "chunk_id": 95,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.3721201530730771
+        },
+        {
+          "rank": 4,
+          "chunk_id": 96,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 3,
+          "similarity": 0.35242907092398046
+        },
+        {
+          "rank": 5,
+          "chunk_id": 145,
+          "document": "RELIRAG_Network_Security_Benchmark.pdf",
+          "page": 29,
+          "similarity": 0.3481460511684418
+        }
+      ],
+      "outcome": "evaluator_error",
+      "scores": {
+        "faithfulness": null,
+        "answer_relevance": null,
+        "context_relevance": null
+      },
+      "passed": false,
+      "failure_type": "evaluator_error",
+      "feedback": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'",
+      "claims": [],
+      "verdict_counts": {},
+      "usage": {
+        "model": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "latency_ms": 0,
+        "llm_calls": 0
+      },
+      "ok": false,
+      "failed_checks": [
+        {
+          "kind": "evaluator_error",
+          "name": "evaluated",
+          "ok": false,
+          "detail": "Evaluation failed: Messages.create() got an unexpected keyword argument 'temperature'"
+        }
+      ],
+      "checks_run": 4
+    }
+  ],
+  "summary": {
+    "evaluations": 6,
+    "outcomes": {
+      "evaluator_error": 6
+    },
+    "evaluator_errors": [
+      "udp_guarantees_delivery",
+      "mixed_true_false",
+      "overreach",
+      "off_topic",
+      "wrong_evidence",
+      "grounded_control"
+    ],
+    "integrity_failures": [],
+    "quote_presence_failures": [],
+    "semantic_support_failures": [],
+    "expectation_failures": [],
+    "ok": false
+  }
+}

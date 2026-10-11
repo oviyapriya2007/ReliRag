@@ -1,5 +1,7 @@
 
 import { useMemo, useState } from 'react'
+import { USE_MOCK } from '../../api/client'
+import NotAvailable from '../components/NotAvailable'
 
 const evaluations = [
   {
@@ -50,7 +52,7 @@ const statusLabels = {
   INSUFFICIENT_EVIDENCE: 'Insufficient evidence',
 }
 
-function Analytics() {
+function AnalyticsDemo() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [selectedEvaluation, setSelectedEvaluation] = useState(null)
@@ -312,6 +314,20 @@ function Analytics() {
         </div>
       </section>
     </div>
+  )
+}
+
+function Analytics() {
+  if (USE_MOCK) {
+    return <AnalyticsDemo />
+  }
+
+  return (
+    <NotAvailable
+      eyebrow="PERFORMANCE OVERVIEW"
+      title="Analytics & History"
+      description="Track evaluation quality, review past questions, and inspect results."
+    />
   )
 }
 

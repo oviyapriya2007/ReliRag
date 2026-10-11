@@ -1,4 +1,4 @@
-"""RELI-RAG A6: question-file loading for calibrate_gate.py.
+"""RELI-RAG A6: question loading and required inputs for calibrate_gate.py.
 
 Usage (from the project root or backend/):
     python backend/test_calibrate_gate.py
@@ -108,7 +108,76 @@ class LoadQuestionsTest(unittest.TestCase):
             self.load({"questions": [benchmark_entry("clearly_covered")]})
 
 
+class LoadCliQuestionsTest(unittest.TestCase):
+    def load(self, covered=None, out_of_scope=None):
+        args = argparse.Namespace(questions=None, covered=covered, out_of_scope=out_of_scope)
+        return load_questions(args)
+
+    def test_no_questions_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "no calibration questions given"):
+            self.load()
+
+    def test_cli_questions_are_stripped(self):
+        self.assertEqual(self.load([" a "], ["b"]), {COVERED: ["a"], OUT_OF_SCOPE: ["b"]})
+
+    def test_one_cli_group_missing_or_empty_is_rejected(self):
+        for covered, out_of_scope in ((["a"], None), (None, ["b"]), ([], ["b"]), (["a"], [])):
+            with self.subTest(covered=covered, out_of_scope=out_of_scope):
+                with self.assertRaisesRegex(ValueError, "at least one covered and one out-of-scope"):
+                    self.load(covered, out_of_scope)
+
+    def test_blank_cli_question_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, r"'--out-of-scope' must be a list of non-empty"):
+            self.load(["a"], ["  "])
+
+
 class MainTest(unittest.TestCase):
+    def run_main(self, args, similarities=None):
+        """Run main() with mocked retrieval; returns (exit code, output, retrieve, SessionLocal)."""
+        def fake_retrieve(_db, question, *, k, document_ids):
+            return [RetrievedChunk(1, 1, "doc.pdf", 1, "text", similarities[question])]
+
+        with patch.object(sys, "argv", ["calibrate_gate.py", *args]), \
+             patch("calibrate_gate.SessionLocal", return_value=MagicMock()) as session_local, \
+             patch("calibrate_gate.retrieve", side_effect=fake_retrieve) as retrieve, \
+             redirect_stdout(io.StringIO()) as output:
+            exit_code = calibrate_gate.main()
+        return exit_code, output.getvalue(), retrieve, session_local
+
+    def test_missing_questions_fail_without_retrieval(self):
+        for args in ([], ["--doc-ids", "8"]):
+            with self.subTest(args=args):
+                exit_code, output, retrieve, session_local = self.run_main(args)
+                self.assertEqual(exit_code, 1, output)
+                self.assertIn("no calibration questions given", output)
+                self.assertNotIn("Suggested SIMILARITY_GATE", output)
+                retrieve.assert_not_called()
+                session_local.assert_not_called()
+
+    def test_single_cli_group_fails_without_retrieval(self):
+        exit_code, output, retrieve, session_local = self.run_main(["--covered", "q1"])
+        self.assertEqual(exit_code, 1, output)
+        self.assertIn("at least one covered and one out-of-scope", output)
+        retrieve.assert_not_called()
+        session_local.assert_not_called()
+
+    def test_cli_questions_suggest_gate(self):
+        similarities = {"c1": 0.62, "c2": 0.55, "o1": 0.20, "o2": 0.35}
+        exit_code, output, retrieve, _ = self.run_main(
+            ["--covered", "c1", "c2", "--out-of-scope", "o1", "o2"], similarities
+        )
+        self.assertEqual(exit_code, 0, output)
+        self.assertEqual([c.args[1] for c in retrieve.call_args_list], ["c1", "c2", "o1", "o2"])
+        self.assertIn("[SEPARABLE] Suggested SIMILARITY_GATE=0.45", output)
+
+    def test_overlapping_cli_questions_suggest_no_gate(self):
+        similarities = {"c1": 0.40, "o1": 0.50}
+        exit_code, output, _, _ = self.run_main(["--covered", "c1", "--out-of-scope", "o1"],
+                                                similarities)
+        self.assertEqual(exit_code, 0, output)
+        self.assertIn("[NOT SEPARABLE]", output)
+        self.assertNotIn("Suggested SIMILARITY_GATE", output)
+
     def test_benchmark_run_is_retrieval_only_and_passes_doc_ids(self):
         def fake_retrieve(_db, question, *, k, document_ids):
             return [RetrievedChunk(1, 8, "benchmark.pdf", 1, "text", 0.5 + len(question) / 1000)]

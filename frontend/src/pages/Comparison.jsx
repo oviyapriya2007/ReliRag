@@ -1,7 +1,9 @@
 
 import { useState } from 'react'
+import { USE_MOCK } from '../../api/client'
+import NotAvailable from '../components/NotAvailable'
 
-function Comparison() {
+function ComparisonDemo() {
   const [showDetails, setShowDetails] = useState(true)
 
   const metrics = [
@@ -226,6 +228,20 @@ function Comparison() {
         )}
       </section>
     </div>
+  )
+}
+
+function Comparison() {
+  if (USE_MOCK) {
+    return <ComparisonDemo />
+  }
+
+  return (
+    <NotAvailable
+      eyebrow="ANSWER QUALITY WORKSPACE"
+      title="Comparison Lab"
+      description="Compare a basic RAG answer with RELI-RAG's corrected answer."
+    />
   )
 }
 
