@@ -21,6 +21,8 @@ from unittest.mock import patch
 
 # Must be set before `app` is imported so the app never connects to the real database.
 os.environ["DATABASE_URL"] = "sqlite://"
+os.environ.update({"EVALUATOR_MODEL": "", "EVALUATOR_MAX_TOKENS": "2048",
+                   "EVALUATOR_PASS_THRESHOLD": "0.80", "EVALUATOR_MAX_PARSE_ATTEMPTS": "2"})
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 

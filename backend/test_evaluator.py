@@ -12,13 +12,25 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 # Must be set before `app` is imported so the app never connects to the real database.
 os.environ["DATABASE_URL"] = "sqlite://"
+# Pin the evaluator settings so a local .env cannot change the expected results.
+EVALUATOR_ENV = {
+    "EVALUATOR_MODEL": "",
+    "EVALUATOR_MAX_TOKENS": "2048",
+    "EVALUATOR_PASS_THRESHOLD": "0.80",
+    "EVALUATOR_MAX_PARSE_ATTEMPTS": "2",
+}
+os.environ.update(EVALUATOR_ENV)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from pydantic import ValidationError  # noqa: E402
+
+from app.config import Settings, settings  # noqa: E402
 from app.services.evaluator import (  # noqa: E402
     EVALUATOR_ERROR,
     IRRELEVANT_RETRIEVAL,
@@ -271,6 +283,107 @@ class EvaluateAnswerTest(unittest.TestCase):
                 with self.subTest(args=args[:2]), self.assertRaises(ValueError):
                     evaluate_answer(*args)
         claude.assert_not_called()
+
+
+class EvaluatorSettingsTest(unittest.TestCase):
+    def load(self, **env):
+        """Settings from the process environment plus `env`, ignoring any .env file."""
+        base = {k: v for k, v in os.environ.items() if k not in EVALUATOR_ENV}
+        with patch.dict(os.environ, {**base, **env}, clear=True):
+            return Settings(_env_file=None)
+
+    def test_defaults(self):
+        loaded = self.load()
+        self.assertIsNone(loaded.evaluator_model)
+        self.assertEqual(loaded.evaluator_max_tokens, 2048)
+        self.assertEqual(loaded.evaluator_pass_threshold, 0.80)
+        self.assertEqual(loaded.evaluator_max_parse_attempts, 2)
+        self.assertEqual(loaded.claude_max_tokens, 1024)
+
+    def test_environment_overrides(self):
+        loaded = self.load(EVALUATOR_MODEL="eval-model", EVALUATOR_MAX_TOKENS="4096",
+                           EVALUATOR_PASS_THRESHOLD="0.9", EVALUATOR_MAX_PARSE_ATTEMPTS="3",
+                           CLAUDE_MODEL="gen-model")
+        self.assertEqual(loaded.evaluator_model, "eval-model")
+        self.assertEqual(loaded.claude_model, "gen-model")
+        self.assertEqual(loaded.evaluator_max_tokens, 4096)
+        self.assertEqual(loaded.evaluator_pass_threshold, 0.9)
+        self.assertEqual(loaded.evaluator_max_parse_attempts, 3)
+
+    def test_invalid_values_are_rejected(self):
+        for name, value in (("EVALUATOR_PASS_THRESHOLD", "1.5"),
+                            ("EVALUATOR_PASS_THRESHOLD", "-0.1"),
+                            ("EVALUATOR_MAX_TOKENS", "0"),
+                            ("EVALUATOR_MAX_PARSE_ATTEMPTS", "0")):
+            with self.subTest(name=name, value=value), self.assertRaises(ValidationError):
+                self.load(**{name: value})
+
+
+class EvaluatorConfigurationTest(unittest.TestCase):
+    def evaluate(self, *texts: str, **kwargs):
+        with patch("app.services.evaluator.call_claude") as claude:
+            claude.side_effect = [llm_result(text) for text in texts]
+            result = evaluate_answer(QUESTION, ANSWER, CHUNKS, **kwargs)
+        return result, claude
+
+    def test_default_token_limit_and_model_fallback(self):
+        _, claude = self.evaluate(reply())
+        self.assertEqual(claude.call_args.kwargs["max_tokens"], 2048)
+        self.assertIsNone(claude.call_args.kwargs["model"])
+
+    def test_configured_model_and_token_limit(self):
+        with patch.object(settings, "evaluator_model", "eval-model"), \
+             patch.object(settings, "evaluator_max_tokens", 4096):
+            _, claude = self.evaluate("not json", reply())
+        for call in claude.call_args_list:
+            self.assertEqual((call.kwargs["model"], call.kwargs["max_tokens"]),
+                             ("eval-model", 4096))
+
+    def test_unset_evaluator_model_uses_claude_model(self):
+        response = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=reply())], model="gen-model",
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1), stop_reason="end_turn",
+        )
+        client = MagicMock()
+        client.messages.create.return_value = response
+        with patch.object(settings, "claude_model", "gen-model"), \
+             patch.object(settings, "evaluator_model", None), \
+             patch("app.services.llm.get_client", return_value=client):
+            result = evaluate_answer(QUESTION, ANSWER, CHUNKS)
+        self.assertEqual(client.messages.create.call_args.kwargs["model"], "gen-model")
+        self.assertEqual(result.model, "gen-model")
+
+    def test_configured_pass_threshold(self):
+        with patch.object(settings, "evaluator_pass_threshold", 0.95):
+            strict, _ = self.evaluate(reply())
+            self.assertEqual(determine_failure_type(1.0, 0.95, 0.9), IRRELEVANT_RETRIEVAL)
+        self.assertFalse(strict.passed)
+        self.assertEqual(strict.failure_type, IRRELEVANT_RETRIEVAL)
+
+        with patch.object(settings, "evaluator_pass_threshold", 0.5):
+            lenient, _ = self.evaluate(reply(context_relevance=0.6))
+        self.assertTrue(lenient.passed)
+
+    def test_explicit_arguments_override_settings(self):
+        with patch.object(settings, "evaluator_model", "eval-model"), \
+             patch.object(settings, "evaluator_max_tokens", 4096), \
+             patch.object(settings, "evaluator_pass_threshold", 0.5):
+            result, claude = self.evaluate(reply(), threshold=0.95, max_tokens=512,
+                                           model="arg-model")
+        self.assertEqual((claude.call_args.kwargs["model"], claude.call_args.kwargs["max_tokens"]),
+                         ("arg-model", 512))
+        self.assertEqual(result.failure_type, IRRELEVANT_RETRIEVAL)
+
+    def test_configured_parse_attempts(self):
+        with patch.object(settings, "evaluator_max_parse_attempts", 1):
+            single, claude = self.evaluate("not json")
+        self.assertEqual(claude.call_count, 1)
+        self.assertEqual(single.failure_type, EVALUATOR_ERROR)
+
+        with patch.object(settings, "evaluator_max_parse_attempts", 3):
+            third_time, claude = self.evaluate("not json", "still not json", reply())
+        self.assertEqual(claude.call_count, 3)
+        self.assertTrue(third_time.passed)
 
 
 if __name__ == "__main__":

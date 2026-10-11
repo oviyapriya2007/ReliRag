@@ -18,6 +18,8 @@ from unittest.mock import patch
 # Must be set before `app` is imported so the app never connects to the real database.
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["SIMILARITY_GATE"] = "0.30"
+os.environ.update({"EVALUATOR_MODEL": "", "EVALUATOR_MAX_TOKENS": "2048",
+                   "EVALUATOR_PASS_THRESHOLD": "0.80", "EVALUATOR_MAX_PARSE_ATTEMPTS": "2"})
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -26,15 +28,18 @@ from sqlalchemy import create_engine, select  # noqa: E402
 from sqlalchemy.orm import selectinload, sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from app.config import settings  # noqa: E402
 from app.db import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Answer, Document, DocumentChunk, Evaluation, Query  # noqa: E402
 from app.routers.query import GATE_FAILED_MESSAGE, NOT_SUPPORTED_MESSAGE  # noqa: E402
 from app.services.evaluator import (  # noqa: E402
     EVALUATOR_ERROR,
+    IRRELEVANT_RETRIEVAL,
     SUPPORTED,
     UNSUPPORTED,
     UNSUPPORTED_CLAIM,
+    evaluate_answer,
 )
 from app.services.generator import ANSWERED  # noqa: E402
 from app.services.llm import LLMResult  # noqa: E402
@@ -267,6 +272,24 @@ class QueryStatusTest(unittest.TestCase):
         self.assertEqual(returned["claims"], [])
         self.assertEqual(attempt["timings"]["evaluate_ms"], evaluation.latency_ms)
         self.assertEqual(attempt["citations"], [1])
+
+    def test_pipeline_passes_evaluator_settings(self):
+        with patch.object(settings, "evaluator_pass_threshold", 0.95), \
+             patch.object(settings, "evaluator_max_tokens", 3000), \
+             patch.object(settings, "evaluator_model", "eval-model"), \
+             patch("app.services.query_pipeline.evaluate_answer",
+                   wraps=evaluate_answer) as spy:
+            body, claude, evaluator = self.post_query(0.9, ANSWER_TEXT)
+
+        self.assertEqual(spy.call_args.kwargs["threshold"], 0.95)
+        self.assertEqual(evaluator.call_args.kwargs["model"], "eval-model")
+        self.assertEqual(evaluator.call_args.kwargs["max_tokens"], 3000)
+        self.assertIsNone(claude.call_args.kwargs.get("model"))
+        self.assert_status_consistent(body, ANSWERED)
+        [evaluation] = self.saved_evaluations(body["query_id"])
+        self.assertFalse(evaluation.passed)
+        self.assertEqual(evaluation.failure_type, IRRELEVANT_RETRIEVAL)
+        self.assertEqual(body["attempts"][0]["evaluation"]["failure_type"], IRRELEVANT_RETRIEVAL)
 
     def test_evaluator_exception_does_not_fail_query(self):
         with patch("app.services.query_pipeline.evaluate_answer",

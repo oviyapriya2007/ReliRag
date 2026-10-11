@@ -45,7 +45,6 @@ from app.services.evaluator import (  # noqa: E402
     IRRELEVANT_RETRIEVAL,
     MISSING_INFO,
     PARTIALLY_SUPPORTED,
-    PASS_THRESHOLD,
     SUPPORTED,
     UNSUPPORTED,
     UNSUPPORTED_CLAIM,
@@ -327,12 +326,14 @@ def quote_problem(claim, chunks_by_id: dict[int, RetrievedChunk]) -> str | None:
 
 
 def validate_result(result: EvaluationResult, chunks: Sequence[RetrievedChunk],
-                    threshold: float = PASS_THRESHOLD) -> list[Check]:
+                    threshold: float | None = None) -> list[Check]:
     """Re-check an evaluation without relying on the evaluator's own helpers.
 
     Quote-presence checks only show that a quote exists in the cited chunk; they say nothing
     about whether the quote supports the claim (see `check_negative_case`).
     """
+    if threshold is None:
+        threshold = settings.evaluator_pass_threshold
     checks: list[Check] = []
 
     def add(kind: str, name: str, ok: bool, detail: str = "") -> None:
@@ -407,7 +408,8 @@ def check_negative_case(case: NegativeCase, result: EvaluationResult | None) -> 
             f"got {result.failure_type}, allowed {list(case.allowed_failure_types)}")
     if case.expect_low_context_relevance:
         add(EXPECTATION, "context_relevance_below_threshold",
-            _is_unit_score(result.context_relevance) and result.context_relevance < PASS_THRESHOLD,
+            _is_unit_score(result.context_relevance)
+            and result.context_relevance < settings.evaluator_pass_threshold,
             f"context_relevance={result.context_relevance}")
 
     if not (case.all_claims_false or case.false_claim_patterns):
@@ -620,13 +622,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print_selection(answer_ids, args.negatives, sets)
     total = len(answer_ids) + (len(NEGATIVE_CASES) if args.negatives else 0)
+    model = settings.evaluator_model or settings.claude_model
+    calls = f"1-{settings.evaluator_max_parse_attempts}"
     if args.dry_run:
         print(f"\n[DRY RUN] No Claude calls were made. A real run would perform {total} "
-              f"evaluation(s), each making 1-2 Claude calls ({settings.claude_model}).")
+              f"evaluation(s), each making {calls} Claude calls ({model}).")
         return 0
 
-    print(f"\n[COST] Running {total} real evaluation(s) with {settings.claude_model}; each makes "
-          "1-2 Claude calls and consumes API credits. Nothing is written to the database.\n")
+    print(f"\n[COST] Running {total} real evaluation(s) with {model}; each makes "
+          f"{calls} Claude calls and consumes API credits. Nothing is written to the database.\n")
     saved_records = [evaluate_saved(sets[answer_id]) for answer_id in answer_ids]
     negative_records = ([evaluate_negative(case, sets[case.evidence_answer_id])
                          for case in NEGATIVE_CASES] if args.negatives else [])
@@ -637,8 +641,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = {
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "read_only": True,
-        "claude_model": settings.claude_model,
-        "pass_threshold": PASS_THRESHOLD,
+        "claude_model": model,
+        "pass_threshold": settings.evaluator_pass_threshold,
         "note": ("quote_presence checks only confirm a quote occurs in its cited chunk; "
                  "semantic_support checks (negative cases) test whether false claims were "
                  "still judged supported."),

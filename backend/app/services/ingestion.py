@@ -8,15 +8,11 @@ import pymupdf
 from sqlalchemy import delete, insert
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import Document, DocumentChunk
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
-
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 150
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-EMBEDDING_BATCH_SIZE = 32
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -54,9 +50,10 @@ def extract_pages(source: str | Path | bytes) -> tuple[int, list[PageText]]:
         return pdf.page_count, pages
 
 
-def split_text(
-    text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
-) -> list[str]:
+def split_text(text: str, size: int | None = None, overlap: int | None = None) -> list[str]:
+    """Fixed-size character windows; unset `size`/`overlap` use CHUNK_SIZE/CHUNK_OVERLAP."""
+    size = settings.chunk_size if size is None else size
+    overlap = settings.chunk_overlap if overlap is None else overlap
     if overlap >= size:
         raise ValueError("overlap must be smaller than size")
 
@@ -84,7 +81,7 @@ def chunk_pages(pages: list[PageText]) -> list[Chunk]:
 def get_embedding_model() -> "SentenceTransformer":
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(EMBEDDING_MODEL_NAME)
+    return SentenceTransformer(settings.embedding_model)
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
@@ -92,7 +89,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         return []
     embeddings = get_embedding_model().encode(
         texts,
-        batch_size=EMBEDDING_BATCH_SIZE,
+        batch_size=settings.embedding_batch_size,
         normalize_embeddings=True,
         convert_to_numpy=True,
         show_progress_bar=False,

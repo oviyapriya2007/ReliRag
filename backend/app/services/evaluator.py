@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
+from app.config import settings
 from app.services.llm import LLMResult, call_claude
 from app.services.retrieval import RetrievedChunk
 
@@ -21,10 +22,6 @@ UNSUPPORTED_CLAIM = "unsupported_claim"
 MISSING_INFO = "missing_info"
 IRRELEVANT_RETRIEVAL = "irrelevant_retrieval"
 EVALUATOR_ERROR = "evaluator_error"
-
-PASS_THRESHOLD = 0.80
-EVALUATOR_MAX_TOKENS = 2048
-MAX_PARSE_ATTEMPTS = 2
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL | re.IGNORECASE)
 _QUOTE_CHARS = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
@@ -199,12 +196,15 @@ def determine_failure_type(
     faithfulness: float,
     answer_relevance: float,
     context_relevance: float,
-    threshold: float = PASS_THRESHOLD,
+    threshold: float | None = None,
 ) -> str | None:
     """None if every score meets `threshold`, else the failure type of the first failing score.
 
     Scores are checked in the order faithfulness, answer relevance, context relevance.
+    `threshold=None` uses EVALUATOR_PASS_THRESHOLD.
     """
+    if threshold is None:
+        threshold = settings.evaluator_pass_threshold
     for score, failure_type in (
         (faithfulness, UNSUPPORTED_CLAIM),
         (answer_relevance, MISSING_INFO),
@@ -228,14 +228,17 @@ def evaluate_answer(
     answer: str,
     chunks: Sequence[RetrievedChunk],
     *,
-    threshold: float = PASS_THRESHOLD,
+    threshold: float | None = None,
     max_tokens: int | None = None,
+    model: str | None = None,
 ) -> EvaluationResult:
     """Verify `answer` claim by claim against `chunks` and score it via Claude (temperature 0).
 
     Faithfulness is computed here from the verified verdicts; Claude only scores answer and
-    context relevance. An invalid reply is retried once; if Claude fails or the retry is also
-    invalid, the result has `passed=False` and `failure_type=EVALUATOR_ERROR` instead of raising.
+    context relevance. An invalid reply is retried up to EVALUATOR_MAX_PARSE_ATTEMPTS calls in
+    total; if Claude fails or every reply is invalid, the result has `passed=False` and
+    `failure_type=EVALUATOR_ERROR` instead of raising. Unset `threshold`, `max_tokens` and
+    `model` use the EVALUATOR_* settings (the model falls back to CLAUDE_MODEL).
     """
     question, answer = question.strip(), answer.strip()
     if not question:
@@ -252,9 +255,10 @@ def evaluate_answer(
     error: str | None = None
     started = time.perf_counter()
     try:
-        for attempt in range(1, MAX_PARSE_ATTEMPTS + 1):
+        for attempt in range(1, settings.evaluator_max_parse_attempts + 1):
             llm = call_claude(request, system=SYSTEM_PROMPT, temperature=0,
-                              max_tokens=max_tokens or EVALUATOR_MAX_TOKENS)
+                              max_tokens=max_tokens or settings.evaluator_max_tokens,
+                              model=model or settings.evaluator_model or None)
             calls.append(llm)
             try:
                 output = parse_evaluator_output(llm.text)

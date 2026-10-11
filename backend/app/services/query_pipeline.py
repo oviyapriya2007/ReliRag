@@ -78,7 +78,9 @@ def run_evaluation(
 ) -> EvaluationResult:
     """Evaluate an answer, turning any exception into an `evaluator_error` result."""
     try:
-        return evaluate_answer(question, answer or "", chunks)
+        return evaluate_answer(
+            question, answer or "", chunks, threshold=settings.evaluator_pass_threshold
+        )
     except Exception as exc:
         logger.warning("Evaluator raised: %r", exc)
         return EvaluationResult(
