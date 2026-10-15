@@ -1,19 +1,43 @@
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass, replace
 
+from sqlalchemy import insert
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Answer, Claim, Evaluation, Query
+from app.models import Answer, Claim, Evaluation, Query, RetrievalLog
+from app.services.attempt_selection import AttemptEvaluation, AttemptSummary, select_final_attempt
+from app.services.corrector import (
+    RETRY_TOP_K,
+    REWRITE,
+    STRICT,
+    RewriteResult,
+    choose_correction,
+    rejected_claim_texts,
+    rewrite_query,
+)
 from app.services.evaluator import EVALUATOR_ERROR, EvaluationResult, evaluate_answer
-from app.services.generator import ANSWERED, generate_answer
+from app.services.generator import (
+    ANSWERED,
+    GenerationResult,
+    build_strict_instructions,
+    generate_answer,
+)
 from app.services.llm import LLMError
-from app.services.retrieval import DEFAULT_TOP_K, RetrievedChunk
+from app.services.retrieval import DEFAULT_TOP_K, RetrievedChunk, load_logged_chunks
 from app.services.similarity_gate import retrieve_with_gate
 
 logger = logging.getLogger(__name__)
 
 ERROR = "ERROR"
+
+
+@dataclass(frozen=True)
+class AttemptResult:
+    answer: Answer
+    chunks: list[RetrievedChunk]
+    rewrite: RewriteResult | None = None
 
 
 def run_basic_query(
@@ -43,21 +67,274 @@ def run_basic_query(
     db.add(query)
     db.commit()
 
-    gate = retrieve_with_gate(
-        db, query, k=k, document_ids=document_ids, threshold=threshold, attempt_number=1
-    )
-    if not gate.passed:
-        return query
-
-    answer = db.get(Answer, gate.answer_id)
     try:
-        result = generate_answer(question, gate.chunks)
+        attempt = run_attempt(
+            db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold
+        )
     except LLMError:
-        answer.status = ERROR
         query.final_status = ERROR
         db.commit()
         raise
+    query.final_status = attempt.answer.status
+    db.commit()
 
+    if attempt.answer.status == ANSWERED:
+        save_evaluation(
+            db, attempt.answer, run_evaluation(question, attempt.answer.answer_text, attempt.chunks)
+        )
+    return query
+
+
+def run_reli_rag(
+    db: Session,
+    question: str,
+    *,
+    k: int = DEFAULT_TOP_K,
+    document_ids: Sequence[int] | None = None,
+) -> Query:
+    """Run RELI-RAG: attempt 1 as in basic mode, then at most one corrective attempt.
+
+    Attempt 1 is retrieved, gated, generated, and evaluated as in `run_basic_query` and is
+    committed as the final attempt before any correction starts. A Claude failure on attempt 1
+    marks the query ERROR and re-raises the `LLMError`. Gate rejections, refusals, passing
+    evaluations, and `evaluator_error` are not retried.
+
+    Otherwise `choose_correction` picks one retry: REWRITE (rewrite the question from the
+    evaluator feedback and retrieve again with RETRY_TOP_K chunks) or STRICT (regenerate from
+    the same chunks, listing the rejected claims). Attempt 2 is evaluated on its own and
+    `select_final_attempt` decides which attempt the query reports. Only saved evaluations
+    count, so the stored record always explains the choice. A failure during attempt 2 is
+    logged and leaves attempt 1 as the final attempt.
+    """
+    threshold = settings.similarity_gate
+    query = Query(
+        question=question,
+        mode="reli",
+        options={
+            "k": k,
+            "retry_k": RETRY_TOP_K,
+            "document_ids": list(document_ids) if document_ids is not None else None,
+            "similarity_gate": threshold,
+        },
+    )
+    db.add(query)
+    db.commit()
+    query_id = query.id
+
+    try:
+        first = run_attempt(
+            db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold
+        )
+    except LLMError:
+        set_final_attempt(db, query, 1, ERROR)
+        raise
+    set_final_attempt(db, query, 1, first.answer.status)
+    if first.answer.status != ANSWERED:
+        return query
+
+    first_evaluation = evaluate_and_save(db, question, first)
+    strategy = choose_correction(first_evaluation)
+    if strategy is None:
+        return query
+
+    attempts = [summarize_attempt(first.answer, first_evaluation)]
+    try:
+        if strategy == STRICT:
+            second = run_strict_attempt(
+                db, first.answer, attempt_number=2,
+                rejected_claims=rejected_claim_texts(first_evaluation.claims),
+            )
+        else:
+            second = run_rewrite_attempt(
+                db, query, attempt_number=2, feedback=first_evaluation.feedback,
+                failure_type=first_evaluation.failure_type,
+                document_ids=document_ids, threshold=threshold,
+            )
+        second_evaluation = None
+        if second.answer.status == ANSWERED:
+            second_evaluation = evaluate_and_save(db, question, second)
+        attempts.append(summarize_attempt(second.answer, second_evaluation))
+    except LLMError as exc:
+        logger.warning("Correction attempt Claude call failed for query_id=%s: %s", query_id, exc)
+    except Exception:
+        db.rollback()
+        logger.exception("Correction attempt failed for query_id=%s", query_id)
+
+    final = select_final_attempt(attempts)
+    set_final_attempt(db, query, final.attempt_number, final.status)
+    return query
+
+
+def evaluate_and_save(
+    db: Session, question: str, attempt: AttemptResult
+) -> EvaluationResult | None:
+    """Evaluate an ANSWERED attempt and save it; the result, or None if it could not be saved."""
+    result = run_evaluation(question, attempt.answer.answer_text, attempt.chunks)
+    return result if save_evaluation(db, attempt.answer, result) is not None else None
+
+
+def summarize_attempt(answer: Answer, evaluation: EvaluationResult | None) -> AttemptSummary:
+    scores = None
+    if evaluation is not None:
+        scores = AttemptEvaluation(
+            passed=evaluation.passed,
+            failure_type=evaluation.failure_type,
+            faithfulness=evaluation.faithfulness,
+            answer_relevance=evaluation.answer_relevance,
+            context_relevance=evaluation.context_relevance,
+        )
+    return AttemptSummary(attempt_number=answer.attempt_number, status=answer.status,
+                          evaluation=scores)
+
+
+def set_final_attempt(db: Session, query: Query, attempt_number: int, status: str | None) -> None:
+    """Record which attempt the query reports, and its status, and commit."""
+    query.final_attempt_number = attempt_number
+    query.final_status = status
+    db.commit()
+
+
+def run_attempt(
+    db: Session,
+    query: Query,
+    *,
+    attempt_number: int,
+    retrieval_query: str | None = None,
+    k: int = DEFAULT_TOP_K,
+    document_ids: Sequence[int] | None = None,
+    threshold: float | None = None,
+    strategy: str | None = None,
+) -> AttemptResult:
+    """Retrieve, gate, and generate one answer attempt for `query.question`.
+
+    Writes only this attempt's `answers` and `retrieval_log` rows and never changes
+    `query.final_status`, so a failing later attempt cannot overwrite an earlier result.
+    If the gate fails, Claude is not called and the attempt is INSUFFICIENT_EVIDENCE.
+    If the Claude call fails, the attempt is marked ERROR and the `LLMError` is re-raised.
+    """
+    gate = retrieve_with_gate(
+        db, query, retrieval_query=retrieval_query, attempt_number=attempt_number,
+        k=k, document_ids=document_ids, threshold=threshold, strategy=strategy,
+    )
+    answer = db.get(Answer, gate.answer_id)
+    if gate.passed:
+        generate_into(db, answer, query.question, gate.chunks)
+    return AttemptResult(answer=answer, chunks=gate.chunks)
+
+
+def run_rewrite_attempt(
+    db: Session,
+    query: Query,
+    *,
+    attempt_number: int,
+    feedback: str | None,
+    failure_type: str | None,
+    k: int = RETRY_TOP_K,
+    document_ids: Sequence[int] | None = None,
+    threshold: float | None = None,
+) -> AttemptResult:
+    """Rewrite the question from evaluator feedback, then retrieve again and generate.
+
+    The rewritten query is used only for retrieval (it is saved as the attempt's
+    `retrieval_query`); the answer is still generated for `query.question`. A rejected
+    rewrite falls back to the original question, retrieved with the larger `k`.
+    Same guarantees as `run_attempt`: earlier attempts and `query.final_status` are untouched.
+    """
+    rewrite = rewrite_query(query.question, feedback, failure_type=failure_type)
+    attempt = run_attempt(
+        db, query, attempt_number=attempt_number, retrieval_query=rewrite.query,
+        k=k, document_ids=document_ids, threshold=threshold, strategy=REWRITE,
+    )
+    return replace(attempt, rewrite=rewrite)
+
+
+def run_strict_attempt(
+    db: Session,
+    source: Answer,
+    *,
+    attempt_number: int,
+    rejected_claims: Sequence[str],
+) -> AttemptResult:
+    """Regenerate `source`'s answer in strict mode from the same chunks, as a new attempt.
+
+    Does not retrieve again: the new attempt reuses `source`'s logged chunks (see
+    `create_attempt_with_same_chunks`), and the strict instructions list `rejected_claims`.
+    If the Claude call fails, the new attempt is marked ERROR and the `LLMError` is re-raised.
+    """
+    attempt = create_attempt_with_same_chunks(
+        db, source, attempt_number=attempt_number, strategy=STRICT
+    )
+    generate_into(db, attempt.answer, source.query.question, attempt.chunks,
+                  strict_instructions=build_strict_instructions(rejected_claims))
+    return attempt
+
+
+def create_attempt_with_same_chunks(
+    db: Session, source: Answer, *, attempt_number: int, strategy: str | None = None
+) -> AttemptResult:
+    """Create attempt `attempt_number` for `source`'s query, reusing `source`'s chunks.
+
+    Copies `source`'s `retrieval_log` rows (chunk, rank order, similarity) and its
+    `retrieval_query` onto the new attempt without retrieving again. `source`, its logs and
+    its evaluations are not modified. Raises `ValueError` if `source` has no logged chunks.
+    """
+    chunks = load_logged_chunks(db, source.id)
+    if not chunks:
+        raise ValueError(f"answer {source.id} has no logged chunks to reuse")
+
+    try:
+        answer = Answer(
+            query=source.query,
+            attempt_number=attempt_number,
+            retrieval_query=source.retrieval_query,
+            strategy=strategy,
+            status=None,
+        )
+        db.add(answer)
+        db.flush()
+        db.execute(
+            insert(RetrievalLog),
+            [
+                {
+                    "answer_id": answer.id,
+                    "chunk_id": chunk.chunk_id,
+                    "rank": rank,
+                    "similarity": chunk.similarity,
+                }
+                for rank, chunk in enumerate(chunks, start=1)
+            ],
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return AttemptResult(answer=answer, chunks=chunks)
+
+
+def generate_into(
+    db: Session,
+    answer: Answer,
+    question: str,
+    chunks: Sequence[RetrievedChunk],
+    *,
+    strict_instructions: str | None = None,
+) -> None:
+    """Generate an answer from `chunks` and save it on `answer`'s row.
+
+    If generation raises (an `LLMError` or anything unexpected), the attempt is marked ERROR
+    and the exception is re-raised.
+    """
+    try:
+        result = generate_answer(question, chunks, strict_instructions=strict_instructions)
+    except Exception:
+        answer.status = ERROR
+        db.commit()
+        raise
+    save_generation(db, answer, result)
+
+
+def save_generation(db: Session, answer: Answer, result: GenerationResult) -> None:
+    """Copy a generation result onto its `answers` row and commit; the query is not touched."""
     answer.answer_text = result.answer
     answer.status = result.status
     if result.llm is not None:
@@ -65,12 +342,7 @@ def run_basic_query(
         answer.latency_ms = result.llm.latency_ms
         answer.input_tokens = result.llm.input_tokens
         answer.output_tokens = result.llm.output_tokens
-    query.final_status = result.status
     db.commit()
-
-    if result.status == ANSWERED:
-        save_evaluation(db, answer, run_evaluation(question, result.answer, gate.chunks))
-    return query
 
 
 def run_evaluation(

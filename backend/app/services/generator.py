@@ -21,6 +21,17 @@ Cite multiple passages separately, e.g. [1][3]. Never cite a number that is not 
 - If the context does not contain enough information to answer the question, reply with exactly \
 {INSUFFICIENT_EVIDENCE} and nothing else."""
 
+MAX_STRICT_CLAIMS = 20
+MAX_STRICT_CLAIM_CHARS = 500
+
+STRICT_INSTRUCTIONS = f"""Strict mode: a previous answer to this question was rejected because \
+some of its claims are not supported by the context passages.{{claims}}
+- Do not repeat a rejected claim unless a passage states it explicitly.
+- State only what the passages say explicitly, and cite every sentence. Leave out anything you \
+cannot cite, even if it seems likely.
+- If what remains does not answer the question, reply with exactly {INSUFFICIENT_EVIDENCE} and \
+nothing else."""
+
 
 @dataclass(frozen=True)
 class GenerationResult:
@@ -43,6 +54,18 @@ def build_prompt(question: str, chunks: Sequence[RetrievedChunk]) -> str:
     return f"Context:\n\n{build_context(chunks)}\n\nQuestion: {question}"
 
 
+def build_strict_instructions(rejected_claims: Sequence[str]) -> str:
+    """Strict-mode rules for regenerating an answer, listing the claims to avoid.
+
+    Blank claims are dropped, whitespace is collapsed, and the list is capped at
+    MAX_STRICT_CLAIMS claims of at most MAX_STRICT_CLAIM_CHARS characters each.
+    """
+    claims = [" ".join(claim.split())[:MAX_STRICT_CLAIM_CHARS] for claim in rejected_claims]
+    claims = [claim for claim in claims if claim][:MAX_STRICT_CLAIMS]
+    listing = "".join(f"\n- {claim}" for claim in claims)
+    return STRICT_INSTRUCTIONS.format(claims=f"\nRejected claims:{listing}\n" if claims else "")
+
+
 def is_refusal(text: str) -> bool:
     """True if a Claude reply begins with the INSUFFICIENT_EVIDENCE refusal token."""
     return _REFUSAL_RE.match(text) is not None
@@ -63,9 +86,12 @@ def generate_answer(
     chunks: Sequence[RetrievedChunk],
     *,
     max_tokens: int | None = None,
+    strict_instructions: str | None = None,
 ) -> GenerationResult:
     """Answer `question` from `chunks` (numbered [1]..[n] in order) via Claude.
 
+    `strict_instructions` (see `build_strict_instructions`) are appended to the system
+    prompt; without them the request is the normal one.
     With no chunks, Claude is not called and the result is INSUFFICIENT_EVIDENCE.
     Raises `LLMError` if the Claude call fails.
     """
@@ -75,7 +101,10 @@ def generate_answer(
     if not chunks:
         return GenerationResult(INSUFFICIENT_EVIDENCE, None, [], [], None)
 
-    llm = call_claude(build_prompt(question, chunks), system=SYSTEM_PROMPT, max_tokens=max_tokens)
+    system = SYSTEM_PROMPT
+    if strict_instructions and strict_instructions.strip():
+        system = f"{SYSTEM_PROMPT}\n\n{strict_instructions.strip()}"
+    llm = call_claude(build_prompt(question, chunks), system=system, max_tokens=max_tokens)
     text = llm.text.strip()
 
     if is_refusal(text):

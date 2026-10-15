@@ -69,9 +69,11 @@ def main() -> int:
             print(f"\n[FAIL] Expected {len(result.chunks)} retrieval_log rows, found {len(logs)}")
             return 1
         expected = None if result.passed else INSUFFICIENT_EVIDENCE
-        if answer.status != expected or (not result.passed and query.final_status != expected):
-            print(f"\n[FAIL] Expected status {expected}, got answer={answer.status} "
-                  f"query={query.final_status}")
+        if answer.status != expected:
+            print(f"\n[FAIL] Expected answer status {expected}, got {answer.status}")
+            return 1
+        if query.final_status is not None:
+            print(f"\n[FAIL] The gate must not set the query status, got {query.final_status}")
             return 1
 
         print(f"\n[OK] Gate {'passed' if result.passed else 'failed'}; "

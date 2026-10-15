@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Document, DocumentChunk
+from app.models import Document, DocumentChunk, RetrievalLog
 from app.services.ingestion import embed_texts
 
 DEFAULT_TOP_K = 5
@@ -71,6 +71,35 @@ def retrieve(
             page=row.page_number,
             text=row.content,
             similarity=1.0 - float(row.distance),
+        )
+        for row in db.execute(stmt)
+    ]
+
+
+def load_logged_chunks(db: Session, answer_id: int) -> list[RetrievedChunk]:
+    """Return the chunks logged for an answer attempt, in rank order, without retrieving again."""
+    stmt = (
+        select(
+            RetrievalLog.chunk_id,
+            RetrievalLog.similarity,
+            DocumentChunk.document_id,
+            Document.filename,
+            DocumentChunk.page_number,
+            DocumentChunk.content,
+        )
+        .join(DocumentChunk, DocumentChunk.id == RetrievalLog.chunk_id)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .where(RetrievalLog.answer_id == answer_id)
+        .order_by(RetrievalLog.rank)
+    )
+    return [
+        RetrievedChunk(
+            chunk_id=row.chunk_id,
+            document_id=row.document_id,
+            document=row.filename,
+            page=row.page_number,
+            text=row.content,
+            similarity=row.similarity,
         )
         for row in db.execute(stmt)
     ]

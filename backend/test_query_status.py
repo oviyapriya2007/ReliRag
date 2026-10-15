@@ -1,4 +1,4 @@
-"""RELI-RAG Day 2-3: status handling and evaluation persistence for POST /query.
+"""RELI-RAG Day 2-4: status handling and evaluation persistence for POST /query and later attempts.
 
 Usage (from the project root or backend/):
     python backend/test_query_status.py
@@ -42,7 +42,8 @@ from app.services.evaluator import (  # noqa: E402
     evaluate_answer,
 )
 from app.services.generator import ANSWERED  # noqa: E402
-from app.services.llm import LLMResult  # noqa: E402
+from app.services.llm import LLMError, LLMResult  # noqa: E402
+from app.services.query_pipeline import ERROR, run_attempt  # noqa: E402
 from app.services.retrieval import RetrievedChunk  # noqa: E402
 from app.services.similarity_gate import INSUFFICIENT_EVIDENCE  # noqa: E402
 
@@ -375,6 +376,76 @@ class QueryStatusTest(unittest.TestCase):
         self.assertEqual(attempt["citations"], [])
         self.assertEqual(len(attempt["retrieval"]), 1)
         self.assert_no_evaluation(attempt)
+
+    def test_claude_error_marks_query_and_attempt_error(self):
+        with patch("app.services.similarity_gate.retrieve", return_value=self.retrieved(0.9)), \
+             patch("app.services.generator.call_claude", side_effect=LLMError("overloaded")), \
+             patch("app.services.evaluator.call_claude") as evaluator:
+            response = self.client.post("/query", json={"question": "What is TCP?"})
+
+        self.assertEqual(response.status_code, 502, response.text)
+        evaluator.assert_not_called()
+        with self.Session() as db:
+            query = db.scalars(select(Query)).one()
+            answers = db.scalars(select(Answer).where(Answer.query_id == query.id)).all()
+            self.assertEqual(query.final_status, ERROR)
+            self.assertEqual([(a.attempt_number, a.status) for a in answers], [(1, ERROR)])
+        self.assertEqual(self.saved_evaluations(query.id), [])
+
+    def run_later_attempt(self, query_id: int, attempt_number: int, similarity: float,
+                          claude_error: LLMError | None = None):
+        """Run `run_attempt` for an existing query with mocked retrieval and Claude.
+
+        Returns the generator Claude mock.
+        """
+        with self.Session() as db, \
+             patch("app.services.similarity_gate.retrieve",
+                   return_value=self.retrieved(similarity)), \
+             patch("app.services.generator.call_claude", side_effect=claude_error) as claude:
+            query = db.get(Query, query_id)
+            if claude_error is None:
+                result = run_attempt(db, query, attempt_number=attempt_number,
+                                     retrieval_query="rewritten question")
+                self.assertEqual(result.answer.attempt_number, attempt_number)
+            else:
+                with self.assertRaises(LLMError):
+                    run_attempt(db, query, attempt_number=attempt_number,
+                                retrieval_query="rewritten question")
+        return claude
+
+    def assert_first_attempt_kept(self, query_id: int, later_status: str) -> None:
+        with self.Session() as db:
+            query = db.get(Query, query_id)
+            answers = db.scalars(
+                select(Answer).where(Answer.query_id == query_id).order_by(Answer.attempt_number)
+            ).all()
+            self.assertEqual(query.final_status, ANSWERED)
+            first, second = answers
+            self.assertEqual((first.attempt_number, first.status, first.answer_text,
+                              first.retrieval_query, first.model),
+                             (1, ANSWERED, ANSWER_TEXT, "What is TCP?", MODEL))
+            self.assertEqual((second.attempt_number, second.status, second.answer_text,
+                              second.retrieval_query),
+                             (2, later_status, None, "rewritten question"))
+        [evaluation] = self.saved_evaluations(query_id)
+        self.assertEqual(evaluation.answer_id, first.id)
+
+    def test_later_gate_rejection_keeps_first_attempt_and_final_status(self):
+        body, _, _ = self.post_query(0.9, ANSWER_TEXT)
+
+        claude = self.run_later_attempt(body["query_id"], 2, similarity=0.05)
+
+        claude.assert_not_called()
+        self.assert_first_attempt_kept(body["query_id"], INSUFFICIENT_EVIDENCE)
+
+    def test_later_claude_error_keeps_first_attempt_and_final_status(self):
+        body, _, _ = self.post_query(0.9, ANSWER_TEXT)
+
+        claude = self.run_later_attempt(body["query_id"], 2, similarity=0.9,
+                                        claude_error=LLMError("overloaded"))
+
+        claude.assert_called_once()
+        self.assert_first_attempt_kept(body["query_id"], ERROR)
 
 
 if __name__ == "__main__":

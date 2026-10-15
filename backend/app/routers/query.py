@@ -15,7 +15,7 @@ from app.schemas import (
 )
 from app.services.generator import ANSWERED, parse_citations
 from app.services.llm import LLMError
-from app.services.query_pipeline import ERROR, run_basic_query
+from app.services.query_pipeline import ERROR, run_basic_query, run_reli_rag
 from app.services.similarity_gate import INSUFFICIENT_EVIDENCE
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -89,6 +89,7 @@ def _to_attempt(answer: Answer) -> QueryAttempt:
         attempt_number=answer.attempt_number,
         answer=answer.answer_text,
         retrieval_query=answer.retrieval_query,
+        strategy=answer.strategy,
         status=answer.status,
         model=answer.model,
         citations=citations,
@@ -103,12 +104,19 @@ def _to_attempt(answer: Answer) -> QueryAttempt:
     )
 
 
-def _final_answer(query: Query) -> str | None:
-    last = query.answers[-1] if query.answers else None
-    if query.final_status == ANSWERED and last is not None:
-        return last.answer_text
+def _final_attempt(query: Query) -> Answer | None:
+    """The attempt the query reports: the recorded choice, else (older rows) the last one."""
+    for answer in query.answers:
+        if answer.attempt_number == query.final_attempt_number:
+            return answer
+    return query.answers[-1] if query.answers else None
+
+
+def _final_answer(query: Query, final: Answer | None) -> str | None:
+    if query.final_status == ANSWERED and final is not None:
+        return final.answer_text
     if query.final_status == INSUFFICIENT_EVIDENCE:
-        claude_called = last is not None and last.model is not None
+        claude_called = final is not None and final.model is not None
         return NOT_SUPPORTED_MESSAGE if claude_called else GATE_FAILED_MESSAGE
     if query.final_status == ERROR:
         return ERROR_MESSAGE
@@ -116,13 +124,15 @@ def _final_answer(query: Query) -> str | None:
 
 
 def _to_response(query: Query) -> QueryResponse:
+    final = _final_attempt(query)
     return QueryResponse(
         query_id=query.id,
         question=query.question,
         mode=query.mode,
         created_at=query.created_at,
         status=query.final_status,
-        final_answer=_final_answer(query),
+        final_answer=_final_answer(query, final),
+        final_attempt_number=final.attempt_number if final is not None else None,
         attempts=[_to_attempt(answer) for answer in query.answers],
     )
 
@@ -130,8 +140,9 @@ def _to_response(query: Query) -> QueryResponse:
 # Sync handler on purpose: embedding and the Claude call block, so FastAPI runs it in a worker thread.
 @router.post("", response_model=QueryResponse)
 def run_query(request: QueryRequest, db: Session = Depends(get_db)):
+    pipeline = run_reli_rag if request.mode == "reli" else run_basic_query
     try:
-        query = run_basic_query(db, request.question, k=request.k, document_ids=request.document_ids)
+        query = pipeline(db, request.question, k=request.k, document_ids=request.document_ids)
     except LLMError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Claude call failed: {exc}") from exc
 

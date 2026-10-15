@@ -78,6 +78,7 @@ class Query(Base):
     mode: Mapped[str] = mapped_column(String(16), nullable=False)
     options: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     final_status: Mapped[str | None] = mapped_column(String(32))
+    final_attempt_number: Mapped[int | None] = mapped_column(Integer)
     benchmark_run_id: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -103,6 +104,7 @@ class Answer(Base):
     attempt_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     answer_text: Mapped[str | None] = mapped_column(Text)
     retrieval_query: Mapped[str | None] = mapped_column(Text)
+    strategy: Mapped[str | None] = mapped_column(String(32))
     status: Mapped[str | None] = mapped_column(String(32))
     model: Mapped[str | None] = mapped_column(String(128))
     latency_ms: Mapped[int | None] = mapped_column(Integer)

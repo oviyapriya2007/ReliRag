@@ -32,7 +32,7 @@ class DocumentDeleteResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
-    mode: Literal["basic"] = "basic"
+    mode: Literal["basic", "reli"] = "basic"
     k: int = Field(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K)
     document_ids: list[int] | None = None
 
@@ -77,6 +77,7 @@ class QueryAttempt(BaseModel):
     attempt_number: int
     answer: str | None
     retrieval_query: str | None
+    strategy: str | None = None
     status: str | None
     model: str | None
     citations: list[int]
@@ -92,4 +93,5 @@ class QueryResponse(BaseModel):
     created_at: datetime
     status: str | None
     final_answer: str | None
+    final_attempt_number: int | None = None
     attempts: list[QueryAttempt]

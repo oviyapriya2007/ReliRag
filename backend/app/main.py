@@ -19,7 +19,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     Base.metadata.create_all(bind=engine)
     # create_all doesn't alter existing tables; add columns introduced after first deploy.
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE answers ADD COLUMN IF NOT EXISTS model VARCHAR(128)"))
+        conn.execute(text(
+            "ALTER TABLE answers"
+            " ADD COLUMN IF NOT EXISTS model VARCHAR(128),"
+            " ADD COLUMN IF NOT EXISTS strategy VARCHAR(32)"
+        ))
+        conn.execute(text(
+            "ALTER TABLE queries ADD COLUMN IF NOT EXISTS final_attempt_number INTEGER"
+        ))
         conn.execute(text(
             "ALTER TABLE evaluations"
             " ADD COLUMN IF NOT EXISTS model VARCHAR(128),"

@@ -47,6 +47,14 @@ SUPPORTED_ARGS = set(CREATE_SIGNATURE.parameters) - {"self"}
 TEMPERATURE_ERROR = r"^Messages\.create\(\) got an unexpected keyword argument 'temperature'$"
 
 MODEL = "claude-test-model"
+PINNED_SETTINGS = {
+    "claude_model": MODEL,
+    "claude_max_tokens": 1024,
+    "evaluator_model": None,
+    "evaluator_max_tokens": 2048,
+    "evaluator_pass_threshold": 0.80,
+    "evaluator_max_parse_attempts": 2,
+}
 QUESTION = "What does TCP provide?"
 ANSWER = "TCP provides a reliable, ordered byte stream [1]. It uses a three-way handshake [2]."
 CHUNKS = [
@@ -97,6 +105,15 @@ class FakeAnthropic:
 
 
 class RequestTestCase(unittest.TestCase):
+    def setUp(self):
+        # `settings` is created once per process. When another test module imports `app`
+        # first (e.g. `unittest discover` or pytest), it has already been loaded from .env
+        # and the environment pins above come too late, so pin the live object as well.
+        for name, value in PINNED_SETTINGS.items():
+            patcher = patch.object(settings, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def fake_claude(self, *replies: str) -> FakeMessages:
         """Route `call_claude` to a fake client that returns `replies` in order."""
         client = FakeAnthropic(*replies)
