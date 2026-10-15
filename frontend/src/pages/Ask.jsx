@@ -17,6 +17,21 @@ const HISTORY_KEY = "relirag_query_history";
 const LAST_QUERY_KEY = "relirag_last_query_id";
 const MAX_HISTORY = 10;
 
+// Values must match QueryRequest.mode in backend/app/schemas.py.
+const QUERY_MODES = [
+  {
+    value: "basic",
+    label: "Basic",
+    description: "Single attempt",
+  },
+  {
+    value: "reli",
+    label: "RELI",
+    description: "Evaluation + up to one correction retry",
+  },
+];
+const DEFAULT_MODE = "reli";
+
 const panelStyle = {
   borderColor: BORDER,
   borderRadius: "12px",
@@ -185,6 +200,58 @@ function HistorySidebar({ history, onClear }) {
   );
 }
 
+function ModeSelector({ mode, onChange, disabled }) {
+  return (
+    <fieldset className="mt-4" disabled={disabled}>
+      <legend className="text-sm font-semibold" style={{ color: PURPLE }}>
+        Mode
+      </legend>
+
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+        {QUERY_MODES.map((option) => {
+          const checked = mode === option.value;
+
+          return (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+              style={{
+                borderColor: checked ? BLUE : BORDER,
+                backgroundColor: checked ? "#F4F7FC" : "white",
+                opacity: disabled ? 0.6 : 1,
+              }}
+            >
+              <input
+                type="radio"
+                name="query-mode"
+                value={option.value}
+                checked={checked}
+                onChange={() => onChange(option.value)}
+                className="mt-1"
+              />
+
+              <span className="min-w-0">
+                <span
+                  className="block text-sm font-medium"
+                  style={{ color: DARK_TEXT }}
+                >
+                  {option.label}
+                </span>
+                <span
+                  className="mt-1 block text-xs"
+                  style={{ color: MUTED_TEXT }}
+                >
+                  {option.description}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 function DocumentSelector({
   documents,
   selectedDocuments,
@@ -271,7 +338,49 @@ function DocumentSelector({
   );
 }
 
-function EvaluationSummary({ evaluation, attempt }) {
+// Must match the failure types in backend/app/services/evaluator.py.
+const FAILURE_LABELS = {
+  unsupported_claim: "Unsupported claim",
+  missing_info: "Missing information",
+  irrelevant_retrieval: "Irrelevant retrieval",
+  evaluator_error: "Evaluator error",
+};
+
+function getVerdict(evaluation) {
+  if (!evaluation) {
+    return {
+      label: "NOT EVALUATED",
+      color: MUTED_TEXT,
+      background: "#F5F5F4",
+    };
+  }
+
+  if (evaluation.failure_type === "evaluator_error") {
+    return {
+      label: "EVALUATOR ERROR",
+      color: "#92400E",
+      background: "#FEF3C7",
+    };
+  }
+
+  if (evaluation.passed === true) {
+    return { label: "PASSED", color: "#166534", background: "#DCFCE7" };
+  }
+
+  if (evaluation.passed === false) {
+    return { label: "FAILED", color: "#991B1B", background: "#FEE2E2" };
+  }
+
+  return {
+    label: "NOT DETERMINED",
+    color: MUTED_TEXT,
+    background: "#F5F5F4",
+  };
+}
+
+function EvaluationSummary({ evaluation, attempt, attemptCount }) {
+  const verdict = getVerdict(evaluation);
+  const failureType = evaluation?.failure_type;
   const metrics = [
     {
       label: "Faithfulness",
@@ -301,9 +410,30 @@ function EvaluationSummary({ evaluation, attempt }) {
         </h2>
         <span className="text-xs" style={{ color: MUTED_TEXT }}>
           {attempt?.attempt_number
-            ? `Attempt ${attempt.attempt_number}`
-            : "Latest attempt"}
+            ? `Reported attempt ${attempt.attempt_number} of ${attemptCount}`
+            : "Reported attempt not available"}
         </span>
+      </div>
+
+      <div
+        className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border p-3"
+        style={{ borderColor: BORDER }}
+      >
+        <span className="text-sm font-semibold" style={{ color: DARK_TEXT }}>
+          Evaluation verdict:
+        </span>
+        <span
+          className="inline-block rounded-full px-2 py-1 text-xs font-semibold"
+          style={{ color: verdict.color, backgroundColor: verdict.background }}
+        >
+          {verdict.label}
+        </span>
+        {failureType && (
+          <span className="text-sm" style={{ color: MUTED_TEXT }}>
+            Failure type:{" "}
+            {FAILURE_LABELS[failureType] ?? failureType.replaceAll("_", " ")}
+          </span>
+        )}
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -327,7 +457,9 @@ function EvaluationSummary({ evaluation, attempt }) {
       </div>
 
       <p className="mt-3 text-xs" style={{ color: MUTED_TEXT }}>
-        Scores are displayed from the evaluation data returned by the backend.
+        The answer status only says whether an answer was generated. The
+        evaluation verdict and scores are the backend evaluator&apos;s saved
+        result for the reported attempt and are not recomputed in the browser.
       </p>
     </section>
   );
@@ -489,6 +621,7 @@ function RetrievalDebugPanel({ retrieval, timings, attempts }) {
 
 export default function Ask() {
   const [question, setQuestion] = useState("");
+  const [mode, setMode] = useState(DEFAULT_MODE);
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [result, setResult] = useState(null);
@@ -644,10 +777,11 @@ export default function Ask() {
         // Keep the default Top-k value if settings are unavailable.
       }
 
-      // Send Top-k along with the question.
+      // Send Top-k and the selected mode along with the question.
       const data = await runQuery({
         question: submittedQuestion,
         documentIds: selectedDocuments,
+        mode,
         k: topK,
       });
 
@@ -688,34 +822,40 @@ export default function Ask() {
   }
 
   const attempts = result?.attempts || [];
-  const latestAttempt = attempts.at(-1) || {};
+  // final_answer and status describe the attempt named by final_attempt_number,
+  // which is not necessarily the last attempt.
+  const reportedAttempt =
+    attempts.find(
+      (attempt) =>
+        result?.final_attempt_number != null &&
+        attempt.attempt_number === result.final_attempt_number,
+    ) || {};
   const answer =
     result?.final_answer ??
     result?.answer ??
-    latestAttempt?.answer ??
+    reportedAttempt?.answer ??
     "";
 
   const status = getStatus(result || {});
+  const resultModeLabel =
+    QUERY_MODES.find((option) => option.value === result?.mode)?.label ??
+    null;
   const retrieval =
-    latestAttempt?.retrieval ??
+    reportedAttempt?.retrieval ??
     result?.retrieval ??
     [];
 
   const citations =
-    latestAttempt?.citations ??
+    reportedAttempt?.citations ??
     result?.citations ??
     [];
 
-  const evaluation =
-    latestAttempt?.evaluation ??
-    result?.evaluation ??
-    latestAttempt?.scores ??
-    {};
+  const evaluation = reportedAttempt?.evaluation ?? null;
 
   const timings =
-    latestAttempt?.timings ??
+    reportedAttempt?.timings ??
     result?.timings ??
-    latestAttempt?.attempt_timings ??
+    reportedAttempt?.attempt_timings ??
     {};
 
   const insufficientEvidence =
@@ -767,6 +907,12 @@ export default function Ask() {
             <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
               Choose the relevant documents below before submitting.
             </p>
+
+            <ModeSelector
+              mode={mode}
+              onChange={setMode}
+              disabled={loading}
+            />
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
@@ -833,7 +979,20 @@ export default function Ask() {
                   <h2 className="font-semibold" style={{ color: PURPLE }}>
                     Query Result
                   </h2>
-                  <StatusBadge status={status} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    {resultModeLabel && (
+                      <span
+                        className="inline-block rounded-full px-2 py-1 text-xs font-semibold"
+                        style={{ color: PURPLE, backgroundColor: BORDER }}
+                      >
+                        {resultModeLabel} mode
+                      </span>
+                    )}
+                    <span className="text-xs" style={{ color: MUTED_TEXT }}>
+                      Answer status
+                    </span>
+                    <StatusBadge status={status} />
+                  </div>
                 </div>
 
                 {insufficientEvidence ? (
@@ -883,7 +1042,8 @@ export default function Ask() {
 
               <EvaluationSummary
                 evaluation={evaluation}
-                attempt={latestAttempt}
+                attempt={reportedAttempt}
+                attemptCount={attempts.length}
               />
 
               <section

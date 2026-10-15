@@ -27,6 +27,7 @@ const mockDocuments = [
 const mockQueryResponse = {
   query_id: 0,
   status: 'ANSWERED',
+  final_attempt_number: 1,
   final_answer:
     'Network security protects networks, devices, and data from unauthorized access [1]. It relies on authentication, access control, encryption, and monitoring [2].',
   attempts: [

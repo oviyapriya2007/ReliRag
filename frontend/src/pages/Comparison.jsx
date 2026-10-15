@@ -1,11 +1,43 @@
 import { useState } from 'react'
 import { USE_MOCK, compareAnswers } from '../../api/client'
 
-function getLatestEvaluation(result) {
-  const attempts = result?.attempts ?? []
-  return attempts.length
-    ? attempts[attempts.length - 1]?.evaluation ?? null
-    : null
+// Must match EVALUATOR_ERROR in backend/app/services/evaluator.py.
+const EVALUATOR_ERROR = 'evaluator_error'
+
+// The attempt the query reports, which is not necessarily the last attempt.
+function getReportedAttempt(result) {
+  const finalAttemptNumber = result?.final_attempt_number
+
+  if (finalAttemptNumber === null || finalAttemptNumber === undefined) {
+    return null
+  }
+
+  return (
+    (result?.attempts ?? []).find(
+      (attempt) => attempt?.attempt_number === finalAttemptNumber,
+    ) ?? null
+  )
+}
+
+function missingEvaluationMessage(result, attempt) {
+  if (!result) return 'No result was returned for this mode.'
+
+  if (result.final_attempt_number === null || result.final_attempt_number === undefined) {
+    return 'The backend did not identify a reported attempt, so no evaluation is shown.'
+  }
+
+  if (!attempt) {
+    return `Reported attempt ${result.final_attempt_number} was not found in the response, so no evaluation is shown.`
+  }
+
+  return `Attempt ${attempt.attempt_number} was not evaluated, so no scores or verdict are available.`
+}
+
+function verdictLabel(evaluation) {
+  if (evaluation.failure_type === EVALUATOR_ERROR) return 'Evaluator error'
+  if (evaluation.passed === true) return 'Passed'
+  if (evaluation.passed === false) return 'Failed'
+  return 'Not available'
 }
 
 function formatScore(value) {
@@ -109,7 +141,8 @@ function ScoreCard({ label, basicValue, reliValue }) {
   )
 }
 
-function AnswerCard({ title, result, evaluation, color }) {
+function AnswerCard({ title, result, attempt, color }) {
+  const evaluation = attempt?.evaluation ?? null
   const answer =
     result?.final_answer ||
     'No final answer was returned by the backend.'
@@ -134,7 +167,13 @@ function AnswerCard({ title, result, evaluation, color }) {
 
       <div className="mt-5 rounded-xl bg-[#F5F5F4] p-4">
         <h3 className="text-sm font-semibold text-gray-800">
-          Latest evaluation
+          Reported attempt evaluation
+          {attempt && (
+            <span className="ml-1 font-normal text-gray-500">
+              (attempt {attempt.attempt_number} of{' '}
+              {result?.attempts?.length ?? 0})
+            </span>
+          )}
         </h3>
 
         {evaluation ? (
@@ -171,11 +210,7 @@ function AnswerCard({ title, result, evaluation, color }) {
                       : 'text-gray-500'
                 }`}
               >
-                {evaluation.passed === true
-                  ? 'Passed'
-                  : evaluation.passed === false
-                    ? 'Failed'
-                    : 'Not available'}
+                {verdictLabel(evaluation)}
               </p>
             </div>
 
@@ -193,7 +228,7 @@ function AnswerCard({ title, result, evaluation, color }) {
           </div>
         ) : (
           <p className="mt-2 text-sm leading-6 text-gray-500">
-            No evaluation results were returned for the latest attempt.
+            {missingEvaluationMessage(result, attempt)}
           </p>
         )}
       </div>
@@ -275,8 +310,10 @@ function Comparison() {
     }
   }
 
-  const basicEvaluation = getLatestEvaluation(comparison?.basic)
-  const reliEvaluation = getLatestEvaluation(comparison?.reli)
+  const basicAttempt = getReportedAttempt(comparison?.basic)
+  const reliAttempt = getReportedAttempt(comparison?.reli)
+  const basicEvaluation = basicAttempt?.evaluation ?? null
+  const reliEvaluation = reliAttempt?.evaluation ?? null
 
   return (
     <div className="space-y-6">
@@ -427,14 +464,14 @@ function Comparison() {
             <AnswerCard
               title="Basic RAG"
               result={comparison.basic}
-              evaluation={basicEvaluation}
+              attempt={basicAttempt}
               color="bg-[#E5DBE6] text-[#554188]"
             />
 
             <AnswerCard
               title="RELI-RAG"
               result={comparison.reli}
-              evaluation={reliEvaluation}
+              attempt={reliAttempt}
               color="bg-[#DCE8F0] text-[#385A78]"
             />
           </section>
@@ -445,8 +482,9 @@ function Comparison() {
             </h2>
 
             <p className="mt-1 text-sm leading-6 text-gray-500">
-              These scores come from the latest evaluation returned for each
-              query. Missing values are not estimated or fabricated.
+              These scores come from the evaluation of the attempt each query
+              reports (its final attempt number), which is not necessarily the
+              last attempt. Missing values are not estimated or fabricated.
             </p>
 
             <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
