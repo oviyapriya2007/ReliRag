@@ -149,7 +149,7 @@ class EvaluationsEndpointTest(unittest.TestCase):
                                              verdicts=[UNSUPPORTED], feedback="-2+3")
         return ids
 
-    def list(self, **params) -> dict:
+    def list_evaluations(self, **params) -> dict:
         response = self.client.get("/evaluations", params=params)
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
@@ -170,11 +170,12 @@ class EvaluationsEndpointTest(unittest.TestCase):
     # --- listing --------------------------------------------------------------------------
 
     def test_empty_database(self):
-        self.assertEqual(self.list(), {"total": 0, "limit": 50, "offset": 0, "items": []})
+        self.assertEqual(self.list_evaluations(),
+                         {"total": 0, "limit": 50, "offset": 0, "items": []})
 
     def test_default_lists_latest_evaluations_newest_first(self):
         ids = self.seed()
-        body = self.list()
+        body = self.list_evaluations()
 
         # Every attempt is listed once; only the superseded first evaluation is left out.
         self.assertEqual(body["total"], 5)
@@ -184,7 +185,7 @@ class EvaluationsEndpointTest(unittest.TestCase):
 
     def test_item_joins_query_attempt_claims_and_documents(self):
         ids = self.seed()
-        item = next(item for item in self.list()["items"]
+        item = next(item for item in self.list_evaluations()["items"]
                     if item["evaluation_id"] == ids["reli_second"])
 
         self.assertEqual(
@@ -206,7 +207,7 @@ class EvaluationsEndpointTest(unittest.TestCase):
 
     def test_latest_only_false_includes_superseded_evaluations(self):
         ids = self.seed()
-        body = self.list(latest_only="false")
+        body = self.list_evaluations(latest_only="false")
 
         self.assertEqual(body["total"], 6)
         latest = {item["evaluation_id"]: item["is_latest"] for item in body["items"]}
@@ -222,34 +223,35 @@ class EvaluationsEndpointTest(unittest.TestCase):
         }
         for status, evaluation_ids in expected.items():
             with self.subTest(status=status):
-                body = self.list(status=status)
+                body = self.list_evaluations(status=status)
                 self.assertEqual((body["total"], self.ids(body)),
                                  (len(evaluation_ids), evaluation_ids))
                 self.assertTrue(all(item["status"] == status for item in body["items"]))
 
-        failed_all = self.list(status="failed", latest_only="false")
+        failed_all = self.list_evaluations(status="failed", latest_only="false")
         self.assertEqual(self.ids(failed_all),
                          [ids["formula"], ids["reli_first"], ids["superseded"]])
 
     def test_document_filter_uses_each_attempts_retrieval(self):
         ids = self.seed()
 
-        self.assertEqual(self.ids(self.list(document_id=self.policy)),
+        self.assertEqual(self.ids(self.list_evaluations(document_id=self.policy)),
                          [ids["reli_second"], ids["reli_first"], ids["reevaluated"]])
-        self.assertEqual(self.ids(self.list(document_id=self.hostile)),
+        self.assertEqual(self.ids(self.list_evaluations(document_id=self.hostile)),
                          [ids["formula"], ids["reli_second"], ids["reevaluated"]])
-        self.assertEqual(self.ids(self.list(document_id=self.policy, latest_only="false")),
+        all_policy = self.list_evaluations(document_id=self.policy, latest_only="false")
+        self.assertEqual(self.ids(all_policy),
                          [ids["reli_second"], ids["reli_first"], ids["reevaluated"],
                           ids["superseded"]])
 
     def test_combined_filters_and_empty_matches(self):
         ids = self.seed()
 
-        self.assertEqual(self.ids(self.list(status="failed", document_id=self.hostile)),
-                         [ids["formula"]])
-        self.assertEqual(self.list(status="evaluator_error", document_id=self.policy)["items"],
-                         [])
-        self.assertEqual(self.list(document_id=999_999),
+        failed_hostile = self.list_evaluations(status="failed", document_id=self.hostile)
+        self.assertEqual(self.ids(failed_hostile), [ids["formula"]])
+        error_policy = self.list_evaluations(status="evaluator_error", document_id=self.policy)
+        self.assertEqual(error_policy["items"], [])
+        self.assertEqual(self.list_evaluations(document_id=999_999),
                          {"total": 0, "limit": 50, "offset": 0, "items": []})
 
     def test_pagination(self):
@@ -257,15 +259,15 @@ class EvaluationsEndpointTest(unittest.TestCase):
         newest_first = [ids["formula"], ids["error"], ids["reli_second"], ids["reli_first"],
                         ids["reevaluated"]]
 
-        first = self.list(limit=3)
-        second = self.list(limit=3, offset=3)
+        first = self.list_evaluations(limit=3)
+        second = self.list_evaluations(limit=3, offset=3)
         self.assertEqual((first["total"], first["limit"], first["offset"], self.ids(first)),
                          (5, 3, 0, newest_first[:3]))
         self.assertEqual((second["total"], second["offset"], self.ids(second)),
                          (5, 3, newest_first[3:]))
-        self.assertEqual(self.ids(self.list(limit=1, offset=1, status="passed")),
+        self.assertEqual(self.ids(self.list_evaluations(limit=1, offset=1, status="passed")),
                          [ids["reevaluated"]])
-        past_end = self.list(offset=10)
+        past_end = self.list_evaluations(offset=10)
         self.assertEqual((past_end["total"], past_end["items"]), (5, []))
 
     def test_invalid_parameters_are_rejected(self):
@@ -292,7 +294,7 @@ class EvaluationsEndpointTest(unittest.TestCase):
                        {"document_id": self.policy}, {"status": "evaluator_error",
                                                       "document_id": self.policy}):
             with self.subTest(params=params):
-                listed = self.ids(self.list(limit=MAX_PAGE_SIZE, **params))
+                listed = self.ids(self.list_evaluations(limit=MAX_PAGE_SIZE, **params))
                 exported = [int(row["evaluation_id"]) for row in self.export(**params)]
                 self.assertEqual(exported, listed)
 
