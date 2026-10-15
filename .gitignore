@@ -40,3 +40,6 @@ dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Docker local data and overrides
+docker-compose.override.yml

@@ -4,6 +4,9 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export { USE_MOCK, API_BASE_URL }
+
+// Used only when VITE_USE_MOCK=true.
+// Keep VITE_USE_MOCK=false for real backend data.
 const mockDocuments = [
   {
     id: 'doc-001',
@@ -59,11 +62,18 @@ const mockQueryResponse = {
 async function errorMessage(response, fallback) {
   try {
     const body = await response.json()
-    if (typeof body.detail === 'string') return body.detail
-    if (Array.isArray(body.detail)) return body.detail.map((item) => item.msg).join('; ')
+
+    if (typeof body.detail === 'string') {
+      return body.detail
+    }
+
+    if (Array.isArray(body.detail)) {
+      return body.detail.map((item) => item.msg).join('; ')
+    }
   } catch {
-    // Non-JSON error body
+    // The response body was not JSON.
   }
+
   return `${fallback} (HTTP ${response.status})`
 }
 
@@ -85,7 +95,9 @@ async function getDocuments() {
   const response = await fetch(`${API_BASE_URL}/documents`)
 
   if (!response.ok) {
-    throw new Error(await errorMessage(response, 'Failed to fetch documents'))
+    throw new Error(
+      await errorMessage(response, 'Failed to fetch documents'),
+    )
   }
 
   return (await response.json()).map(toUiDocument)
@@ -93,7 +105,13 @@ async function getDocuments() {
 
 async function uploadDocument(file) {
   if (USE_MOCK) {
-    return { id: `mock-${Date.now()}`, name: file.name, pages: null, chunks: null, created_at: new Date().toISOString() }
+    return {
+      id: `mock-${Date.now()}`,
+      name: file.name,
+      pages: null,
+      chunks: null,
+      created_at: new Date().toISOString(),
+    }
   }
 
   const formData = new FormData()
@@ -105,7 +123,9 @@ async function uploadDocument(file) {
   })
 
   if (!response.ok) {
-    throw new Error(await errorMessage(response, 'Failed to upload document'))
+    throw new Error(
+      await errorMessage(response, 'Failed to upload document'),
+    )
   }
 
   return toUiDocument(await response.json())
@@ -116,18 +136,23 @@ async function deleteDocument(documentId) {
     return { id: documentId, deleted: true }
   }
 
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
-    method: 'DELETE',
-  })
+  const response = await fetch(
+    `${API_BASE_URL}/documents/${documentId}`,
+    {
+      method: 'DELETE',
+    },
+  )
 
   if (!response.ok) {
-    throw new Error(await errorMessage(response, 'Failed to delete document'))
+    throw new Error(
+      await errorMessage(response, 'Failed to delete document'),
+    )
   }
 
   return response.json()
 }
 
-async function runQuery({ question, documentIds }) {
+async function runQuery({ question, documentIds, mode = 'basic', k = 5 }) {
   if (USE_MOCK) {
     await new Promise((resolve) => setTimeout(resolve, 1200))
     return mockQueryResponse
@@ -135,8 +160,15 @@ async function runQuery({ question, documentIds }) {
 
   const response = await fetch(`${API_BASE_URL}/query`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, document_ids: documentIds }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      question,
+      mode,
+      k,
+      document_ids: documentIds,
+    }),
   })
 
   if (!response.ok) {
@@ -146,4 +178,31 @@ async function runQuery({ question, documentIds }) {
   return response.json()
 }
 
-export { getDocuments, uploadDocument, deleteDocument, runQuery }
+// Fetch a previously executed query and its real evaluation results.
+async function getQuery(queryId) {
+  if (USE_MOCK) {
+    throw new Error(
+      'Query history is unavailable in mock mode.',
+    )
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/query/${encodeURIComponent(queryId)}`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await errorMessage(response, 'Failed to fetch query'),
+    )
+  }
+
+  return response.json()
+}
+
+export {
+  getDocuments,
+  uploadDocument,
+  deleteDocument,
+  runQuery,
+  getQuery,
+}
