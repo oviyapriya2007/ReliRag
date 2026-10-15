@@ -9,7 +9,12 @@ export const DEMO_SOURCE_DOCUMENT =
   'RELIRAG_Network_Security_Benchmark.pdf'
 
 export const DEMO_QUESTION =
-  'Explain network segmentation, MFA, and centralized logging, including one limitation of each.'
+  'According to the document, explain network segmentation, multi-factor authentication (MFA), and centralized logging. Describe how each improves security and identify one limitation of each measure. Support every point with evidence from the document.'
+
+/** Exact-match only; every other Ask question uses the live RELI-RAG pipeline. */
+export function isCorrectionDemoQuestion(question) {
+  return String(question ?? '').trim() === DEMO_QUESTION
+}
 
 /** Topics the fixed demo question requires. */
 export const DEMO_TOPICS = [
@@ -182,6 +187,8 @@ export function buildCorrectionDemoPayload() {
     source_document: DEMO_SOURCE_DOCUMENT,
     question: DEMO_QUESTION,
     correction_query: DEMO_CORRECTION_QUERY,
+    // Shape matches Ask / CorrectionPipeline expectations (not a DB row).
+    mode: 'reli',
     status: 'ANSWERED',
     final_attempt_number: 2,
     final_answer: DEMO_ATTEMPT_2_ANSWER,
