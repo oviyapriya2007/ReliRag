@@ -37,19 +37,24 @@ def retrieve_with_gate(
     document_ids: Sequence[int] | None = None,
     threshold: float | None = None,
     strategy: str | None = None,
+    chunks: Sequence[RetrievedChunk] | None = None,
 ) -> GateResult:
     """Retrieve chunks for one answer attempt, log them, and apply the similarity gate.
 
     Creates the `answers` row for this attempt and one `retrieval_log` row per chunk,
     whether or not the gate passes. On failure the attempt is marked INSUFFICIENT_EVIDENCE
     and no answer should be generated. `query.final_status` is never changed here; the
-    pipeline decides it.
+    pipeline decides it. `chunks`, if given, are an already retrieved result (in rank order)
+    for `retrieval_query`; they are gated and logged the same way, without retrieving again.
     """
     if threshold is None:
         threshold = settings.similarity_gate
     retrieval_query = retrieval_query or query.question
 
-    chunks = retrieve(db, retrieval_query, k=k, document_ids=document_ids)
+    if chunks is None:
+        chunks = retrieve(db, retrieval_query, k=k, document_ids=document_ids)
+    else:
+        chunks = list(chunks)
     passed = passes_gate(chunks, threshold)
     status = None if passed else INSUFFICIENT_EVIDENCE
 

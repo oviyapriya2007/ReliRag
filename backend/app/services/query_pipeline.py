@@ -1,6 +1,7 @@
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 
 from sqlalchemy import insert
 from sqlalchemy.orm import Session
@@ -40,12 +41,47 @@ class AttemptResult:
     rewrite: RewriteResult | None = None
 
 
+def create_query(
+    db: Session,
+    question: str,
+    *,
+    mode: str,
+    k: int = DEFAULT_TOP_K,
+    document_ids: Sequence[int] | None = None,
+    extra_options: Mapping[str, Any] | None = None,
+    benchmark_run_id: str | None = None,
+) -> Query:
+    """Insert and commit the `queries` row for one run; its options record the run settings.
+
+    The `execute_*` functions read k, document_ids, and the similarity gate back from these
+    options. `extra_options` are merged in, e.g. to link the queries of one comparison.
+    `benchmark_run_id` tags the row as part of one benchmark run.
+    """
+    options: dict[str, Any] = {"k": k}
+    if mode == "reli":
+        options["retry_k"] = RETRY_TOP_K
+    options["document_ids"] = list(document_ids) if document_ids is not None else None
+    options["similarity_gate"] = settings.similarity_gate
+    options.update(extra_options or {})
+    query = Query(question=question, mode=mode, options=options,
+                  benchmark_run_id=benchmark_run_id)
+    db.add(query)
+    db.commit()
+    return query
+
+
+def _run_settings(query: Query) -> tuple[int, list[int] | None, float]:
+    options = query.options
+    return options["k"], options["document_ids"], options["similarity_gate"]
+
+
 def run_basic_query(
     db: Session,
     question: str,
     *,
     k: int = DEFAULT_TOP_K,
     document_ids: Sequence[int] | None = None,
+    chunks: Sequence[RetrievedChunk] | None = None,
 ) -> Query:
     """Run basic RAG for one question: retrieve + gate (A2), generate (A4), then evaluate.
 
@@ -53,23 +89,25 @@ def run_basic_query(
     fails, the attempt and query are marked ERROR and the `LLMError` is re-raised.
     An ANSWERED attempt is evaluated after it is committed; evaluation never changes the
     answer or its status, and evaluation failures are saved as `evaluator_error`.
+    `chunks`, if given, replace the retrieval (see `execute_basic_query`).
     """
-    threshold = settings.similarity_gate
-    query = Query(
-        question=question,
-        mode="basic",
-        options={
-            "k": k,
-            "document_ids": list(document_ids) if document_ids is not None else None,
-            "similarity_gate": threshold,
-        },
-    )
-    db.add(query)
-    db.commit()
+    query = create_query(db, question, mode="basic", k=k, document_ids=document_ids)
+    return execute_basic_query(db, query, chunks=chunks)
 
+
+def execute_basic_query(
+    db: Session, query: Query, *, chunks: Sequence[RetrievedChunk] | None = None
+) -> Query:
+    """Run basic RAG (see `run_basic_query`) for a `query` made by `create_query`.
+
+    `chunks`, if given, are an already retrieved result for `query.question`, used instead
+    of retrieving again; they are still gated and logged.
+    """
+    k, document_ids, threshold = _run_settings(query)
     try:
         attempt = run_attempt(
-            db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold
+            db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold,
+            chunks=chunks,
         )
     except LLMError:
         query.final_status = ERROR
@@ -80,7 +118,8 @@ def run_basic_query(
 
     if attempt.answer.status == ANSWERED:
         save_evaluation(
-            db, attempt.answer, run_evaluation(question, attempt.answer.answer_text, attempt.chunks)
+            db, attempt.answer,
+            run_evaluation(query.question, attempt.answer.answer_text, attempt.chunks),
         )
     return query
 
@@ -91,6 +130,7 @@ def run_reli_rag(
     *,
     k: int = DEFAULT_TOP_K,
     document_ids: Sequence[int] | None = None,
+    chunks: Sequence[RetrievedChunk] | None = None,
 ) -> Query:
     """Run RELI-RAG: attempt 1 as in basic mode, then at most one corrective attempt.
 
@@ -105,25 +145,29 @@ def run_reli_rag(
     `select_final_attempt` decides which attempt the query reports. Only saved evaluations
     count, so the stored record always explains the choice. A failure during attempt 2 is
     logged and leaves attempt 1 as the final attempt.
+    `chunks`, if given, replace attempt 1's retrieval (see `execute_reli_rag`).
     """
-    threshold = settings.similarity_gate
-    query = Query(
-        question=question,
-        mode="reli",
-        options={
-            "k": k,
-            "retry_k": RETRY_TOP_K,
-            "document_ids": list(document_ids) if document_ids is not None else None,
-            "similarity_gate": threshold,
-        },
-    )
-    db.add(query)
-    db.commit()
+    query = create_query(db, question, mode="reli", k=k, document_ids=document_ids)
+    return execute_reli_rag(db, query, chunks=chunks)
+
+
+def execute_reli_rag(
+    db: Session, query: Query, *, chunks: Sequence[RetrievedChunk] | None = None
+) -> Query:
+    """Run RELI-RAG (see `run_reli_rag`) for a `query` made by `create_query`.
+
+    `chunks`, if given, are an already retrieved result for `query.question`, used as
+    attempt 1's retrieval instead of retrieving again; they are still gated and logged.
+    A REWRITE correction always retrieves again.
+    """
+    k, document_ids, threshold = _run_settings(query)
+    question = query.question
     query_id = query.id
 
     try:
         first = run_attempt(
-            db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold
+            db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold,
+            chunks=chunks,
         )
     except LLMError:
         set_final_attempt(db, query, 1, ERROR)
@@ -204,6 +248,7 @@ def run_attempt(
     document_ids: Sequence[int] | None = None,
     threshold: float | None = None,
     strategy: str | None = None,
+    chunks: Sequence[RetrievedChunk] | None = None,
 ) -> AttemptResult:
     """Retrieve, gate, and generate one answer attempt for `query.question`.
 
@@ -211,10 +256,11 @@ def run_attempt(
     `query.final_status`, so a failing later attempt cannot overwrite an earlier result.
     If the gate fails, Claude is not called and the attempt is INSUFFICIENT_EVIDENCE.
     If the Claude call fails, the attempt is marked ERROR and the `LLMError` is re-raised.
+    `chunks`, if given, are used instead of retrieving (see `retrieve_with_gate`).
     """
     gate = retrieve_with_gate(
         db, query, retrieval_query=retrieval_query, attempt_number=attempt_number,
-        k=k, document_ids=document_ids, threshold=threshold, strategy=strategy,
+        k=k, document_ids=document_ids, threshold=threshold, strategy=strategy, chunks=chunks,
     )
     answer = db.get(Answer, gate.answer_id)
     if gate.passed:

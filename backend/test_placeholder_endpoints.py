@@ -1,4 +1,4 @@
-"""RELI-RAG: unimplemented endpoints answer 501 instead of returning fake data.
+"""RELI-RAG: no endpoint is left as an HTTP 501 placeholder.
 
 Usage (from the project root or backend/):
     python backend/test_placeholder_endpoints.py
@@ -20,34 +20,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
-from app.routers import analytics, compare, evaluations  # noqa: E402
 
-PLACEHOLDERS = (
-    ("POST", "/evaluations", evaluations.NOT_IMPLEMENTED_DETAIL),
-    ("GET", "/evaluations", evaluations.NOT_IMPLEMENTED_DETAIL),
-    ("GET", "/evaluations/1", evaluations.NOT_IMPLEMENTED_DETAIL),
-    ("GET", "/analytics/summary", analytics.NOT_IMPLEMENTED_DETAIL),
-    ("POST", "/compare", compare.NOT_IMPLEMENTED_DETAIL),
-)
+# Former placeholders replaced by GET /evaluations and GET /evaluations/export.csv.
+REMOVED = (("POST", "/evaluations", 405), ("GET", "/evaluations/1", 404))
 
 
 class PlaceholderEndpointsTest(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
 
-    def test_placeholders_return_501_without_data(self):
-        for method, path, detail in PLACEHOLDERS:
-            with self.subTest(method=method, path=path):
-                response = self.client.request(method, path)
-                self.assertEqual(response.status_code, 501, response.text)
-                self.assertEqual(response.json(), {"detail": detail})
+    def test_no_route_documents_501(self):
+        for path, operations in self.client.get("/openapi.json").json()["paths"].items():
+            for method, operation in operations.items():
+                with self.subTest(method=method, path=path):
+                    self.assertNotIn("501", operation["responses"])
 
-    def test_placeholders_document_501_in_openapi(self):
-        paths = self.client.get("/openapi.json").json()["paths"]
-        for method, path, _ in PLACEHOLDERS:
-            path = path.replace("/evaluations/1", "/evaluations/{evaluation_id}")
+    def test_removed_placeholders_are_gone(self):
+        for method, path, expected in REMOVED:
             with self.subTest(method=method, path=path):
-                self.assertIn("501", paths[path][method.lower()]["responses"])
+                self.assertEqual(self.client.request(method, path).status_code, expected)
 
     def test_health_still_ok(self):
         response = self.client.get("/health")

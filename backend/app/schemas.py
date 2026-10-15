@@ -95,3 +95,97 @@ class QueryResponse(BaseModel):
     final_answer: str | None
     final_attempt_number: int | None = None
     attempts: list[QueryAttempt]
+
+
+BenchmarkRunId = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64,
+                           pattern=r"^[A-Za-z0-9._:-]+$")
+]
+
+
+class CompareRequest(BaseModel):
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    k: int = Field(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K)
+    document_ids: list[int] | None = None
+    benchmark_run_id: BenchmarkRunId | None = Field(
+        default=None, description="Stored on both queries so analytics can filter one benchmark run.")
+
+
+class CompareResponse(BaseModel):
+    compare_id: str
+    benchmark_run_id: str | None = None
+    question: str
+    basic: QueryResponse
+    reli: QueryResponse
+
+
+class RateMetric(BaseModel):
+    count: int
+    total: int = Field(description="Denominator of `rate`.")
+    rate: float | None = Field(description="count / total, or null when total is 0.")
+
+
+class ScoreAverages(BaseModel):
+    evaluations: int = Field(description="Usable evaluations averaged (not evaluator_error).")
+    faithfulness: float | None
+    answer_relevance: float | None
+    context_relevance: float | None
+    overall: float | None = Field(description="Average of each evaluation's mean of the three scores.")
+
+
+class LatencySummary(BaseModel):
+    queries: int = Field(description="Queries with any recorded Claude latency (the avg_total_ms "
+                                     "denominator); gate rejections without a Claude call are excluded.")
+    avg_generation_ms: float | None = Field(
+        description="Per query, the summed answer-generation latency of all attempts.")
+    avg_evaluation_ms: float | None = Field(
+        description="Per query, the summed latency of each attempt's latest evaluation.")
+    avg_total_ms: float | None = Field(
+        description="Per query, generation plus evaluation latency. Retrieval and query rewriting "
+                    "are not recorded and not included.")
+
+
+class ModeSummary(BaseModel):
+    questions: int
+    first_pass: RateMetric = Field(
+        description="Attempt 1 passed its latest evaluation, out of queries whose attempt 1 has a "
+                    "usable evaluation.")
+    insufficient_evidence: int = Field(description="Queries whose final status is INSUFFICIENT_EVIDENCE.")
+    first_attempt_scores: ScoreAverages
+    final_scores: ScoreAverages = Field(description="Scores of the attempt each query reports.")
+    unsupported_claims: int = Field(description="Unsupported claims in the latest evaluation of every attempt.")
+    partially_supported_claims: int
+    latency: LatencySummary
+
+
+class ModeBreakdown(BaseModel):
+    basic: ModeSummary
+    reli: ModeSummary
+
+
+class CorrectionSummary(BaseModel):
+    eligible: int = Field(description="RELI-RAG queries whose attempt 1 failed a usable evaluation.")
+    triggered: int = Field(description="RELI-RAG queries with a stored attempt 2.")
+    successful: int = Field(description="Triggered corrections whose reported attempt is attempt 2 "
+                                        "and passed its evaluation.")
+    failed_after_correction: int = Field(description="triggered - successful.")
+    trigger_rate: float | None = Field(description="triggered / eligible, or null.")
+    success_rate: float | None = Field(description="successful / triggered, or null.")
+
+
+class DocumentUsage(BaseModel):
+    document_id: int
+    filename: str
+    retrievals: int = Field(description="retrieval_log rows (chunks retrieved for any attempt).")
+    queries: int = Field(description="Distinct queries that retrieved a chunk of the document.")
+
+
+class AnalyticsSummary(BaseModel):
+    benchmark_run_id: str | None
+    total_questions: int = Field(description="`queries` rows in scope; a /compare call adds one per mode.")
+    first_pass: RateMetric = Field(description="Both modes combined; see ModeSummary.first_pass.")
+    corrections: CorrectionSummary
+    insufficient_evidence: int
+    unsupported_claims: int
+    by_mode: ModeBreakdown
+    top_documents: list[DocumentUsage] = Field(description="Most retrieved documents, most first.")
