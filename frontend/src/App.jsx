@@ -11,6 +11,7 @@ import Ask from "./pages/Ask";
 import Evaluation from "./pages/Evaluation";
 import Comparison from "./pages/Comparison";
 import Analytics from "./pages/Analytics";
+import CorrectionDemo from "./pages/CorrectionDemo";
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
           <Route path="/query/:id" element={<Evaluation />} />
 
           <Route path="/comparison" element={<Comparison />} />
+          <Route path="/correction-demo" element={<CorrectionDemo />} />
           <Route path="/analytics" element={<Analytics />} />
 
           <Route

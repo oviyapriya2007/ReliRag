@@ -525,27 +525,251 @@ function DocumentSelector({
   );
 }
 
-// Animated workflow. The moving indicator is illustrative;
-// final stage information is inferred from the backend response.
-function CorrectionPipeline({ loading, result, error, mode }) {
-  const [activeStage, setActiveStage] = useState(0);
+const PIPELINE_STAGE_MS = 2200;
+
+function prefersReducedMotion() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function useReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(prefersReducedMotion);
 
   useEffect(() => {
-    if (!loading) {
-      setActiveStage(0);
-      return undefined;
-    }
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
 
-    setActiveStage(0);
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReducedMotion(media.matches);
+    media.addEventListener?.("change", sync);
+    return () => media.removeEventListener?.("change", sync);
+  }, []);
+
+  return reducedMotion;
+}
+
+// Mounted only while a query is in flight so stage state remounts cleanly.
+function IllustrativePipelineProgress({ reducedMotion }) {
+  const stageCount = PIPELINE_STAGES.length;
+  const [activeStage, setActiveStage] = useState(() =>
+    reducedMotion ? stageCount - 1 : 0,
+  );
+
+  useEffect(() => {
+    if (reducedMotion) return undefined;
 
     const interval = window.setInterval(() => {
-      setActiveStage((current) =>
-        Math.min(current + 1, PIPELINE_STAGES.length - 1)
-      );
-    }, 1400);
+      setActiveStage((current) => Math.min(current + 1, stageCount - 1));
+    }, PIPELINE_STAGE_MS);
 
     return () => window.clearInterval(interval);
-  }, [loading]);
+  }, [reducedMotion, stageCount]);
+
+  const focusStage = reducedMotion ? stageCount - 1 : activeStage;
+  const illustrativeProgress = ((focusStage + 1) / stageCount) * 100;
+
+  return (
+    <>
+      <div className="pipeline-progress mt-4">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span style={{ color: MUTED_TEXT }}>
+            {reducedMotion
+              ? "Reduced motion: static wait indicator"
+              : `Stage ${focusStage + 1} of ${stageCount} (time-based)`}
+          </span>
+          <span className="font-semibold" style={{ color: PURPLE }}>
+            {Math.round(illustrativeProgress)}%
+          </span>
+        </div>
+        <div
+          className="pipeline-progress-track mt-2"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(illustrativeProgress)}
+          aria-label="Illustrative pipeline progress"
+        >
+          <div
+            className="pipeline-progress-fill"
+            style={{ width: `${illustrativeProgress}%` }}
+          />
+        </div>
+      </div>
+
+      <PipelineStageGrid
+        loading
+        reducedMotion={reducedMotion}
+        activeStage={focusStage}
+        getStageState={(index) => {
+          if (index < focusStage) return "elapsed";
+          if (index === focusStage) return "active";
+          return "pending";
+        }}
+        getStageMessage={(_index, state) => {
+          if (state === "active") {
+            return reducedMotion
+              ? "Waiting for backend response…"
+              : "Illustrative focus…";
+          }
+          if (state === "elapsed") return "Elapsed (illustrative)";
+          return "Waiting";
+        }}
+      />
+
+      <p className="mt-4 text-xs" style={{ color: MUTED_TEXT }}>
+        Stage highlighting is a time-based visual aid while waiting for the
+        backend. It does not report live stage completion. Actual evaluation
+        and correction results appear when the response arrives.
+      </p>
+    </>
+  );
+}
+
+function PipelineStageGrid({
+  loading,
+  reducedMotion,
+  activeStage,
+  getStageState,
+  getStageMessage,
+}) {
+  const stageCount = PIPELINE_STAGES.length;
+
+  return (
+    <div className="pipeline-stage-grid mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      {PIPELINE_STAGES.map((stage, index) => {
+        const state = getStageState(index);
+        const active = state === "active";
+        const complete = state === "complete";
+        const elapsed = state === "elapsed";
+        const failed = state === "failed";
+        const skipped = state === "skipped";
+
+        const borderColor = active
+          ? BLUE
+          : complete
+            ? "#86EFAC"
+            : failed
+              ? "#FCA5A5"
+              : elapsed
+                ? "#C4B5D6"
+                : BORDER;
+
+        const backgroundColor = active
+          ? "#F0F5FF"
+          : complete
+            ? "#F0FDF4"
+            : failed
+              ? "#FEF2F2"
+              : elapsed
+                ? "#F7F4FB"
+                : "#FAFAF9";
+
+        return (
+          <div
+            key={stage.name}
+            className={`pipeline-stage relative ${
+              active ? "pipeline-stage--active" : ""
+            } ${elapsed ? "pipeline-stage--elapsed" : ""}`}
+          >
+            {index < stageCount - 1 && (
+              <span
+                className={`pipeline-flow-connector hidden lg:block ${
+                  loading && index < activeStage
+                    ? "pipeline-flow-connector--on"
+                    : ""
+                }`}
+                aria-hidden="true"
+              />
+            )}
+
+            <div
+              className="pipeline-stage-card h-full rounded-xl border p-3"
+              style={{
+                borderColor,
+                backgroundColor,
+                boxShadow: active ? `0 0 0 2px ${BLUE}22` : "none",
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
+                  style={{
+                    color: failed
+                      ? "#991B1B"
+                      : complete
+                        ? "#166534"
+                        : PURPLE,
+                    backgroundColor: failed
+                      ? "#FEE2E2"
+                      : complete
+                        ? "#DCFCE7"
+                        : active
+                          ? "#DCE8F8"
+                          : "#E5DBE6",
+                  }}
+                >
+                  {complete
+                    ? "✓"
+                    : failed
+                      ? "!"
+                      : active
+                        ? "…"
+                        : skipped
+                          ? "—"
+                          : index + 1}
+                </span>
+
+                {active && !reducedMotion && (
+                  <span
+                    className="pipeline-spinner h-4 w-4 rounded-full border-2"
+                    style={{
+                      borderColor: BLUE,
+                      borderTopColor: "transparent",
+                    }}
+                    aria-label="Illustrative stage focus"
+                  />
+                )}
+              </div>
+
+              <h3
+                className="mt-3 text-sm font-semibold"
+                style={{ color: PURPLE }}
+              >
+                {stage.name}
+              </h3>
+
+              <p
+                className="mt-1 min-h-10 text-xs leading-5"
+                style={{ color: MUTED_TEXT }}
+              >
+                {stage.detail}
+              </p>
+
+              <p
+                className="mt-2 text-xs font-semibold"
+                style={{
+                  color: failed
+                    ? "#991B1B"
+                    : complete
+                      ? "#166534"
+                      : active
+                        ? PURPLE
+                        : MUTED_TEXT,
+                }}
+              >
+                {getStageMessage(index, state)}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Animated workflow. While loading, stage highlighting is time-based and
+// illustrative only. After the response arrives, states come from the payload.
+function CorrectionPipeline({ loading, result, error, mode }) {
+  const reducedMotion = useReducedMotion();
 
   if (!loading && !result && !error) return null;
 
@@ -555,20 +779,14 @@ function CorrectionPipeline({ loading, result, error, mode }) {
       (attempt) =>
         result?.final_attempt_number != null &&
         Number(attempt.attempt_number) ===
-          Number(result.final_attempt_number)
+          Number(result.final_attempt_number),
     ) || attempts[attempts.length - 1];
 
   const evaluation = finalAttempt?.evaluation;
   const evaluated = Boolean(evaluation);
   const correctionAttempted = attempts.length > 1;
 
-  function getStageState(index) {
-    if (loading) {
-      if (index < activeStage) return "complete";
-      if (index === activeStage) return "active";
-      return "pending";
-    }
-
+  function getResultStageState(index) {
     if (error) return index === 0 ? "failed" : "pending";
     if (!result) return "pending";
 
@@ -600,9 +818,7 @@ function CorrectionPipeline({ loading, result, error, mode }) {
     return "pending";
   }
 
-  function getStageMessage(index, state) {
-    if (loading && state === "active") return "In progress…";
-    if (loading && state === "complete") return "Progress indicator";
+  function getResultStageMessage(index, state) {
     if (state === "failed") return "Check result";
     if (state === "skipped") return "Not required / not reported";
     if (state === "unknown") return "Evaluation data unavailable";
@@ -621,7 +837,7 @@ function CorrectionPipeline({ loading, result, error, mode }) {
 
   return (
     <section
-      className="rounded-xl border bg-white p-5"
+      className="pipeline-panel rounded-xl border bg-white p-5"
       style={panelStyle}
       aria-live="polite"
     >
@@ -646,132 +862,33 @@ function CorrectionPipeline({ loading, result, error, mode }) {
                 : "#DCFCE7",
           }}
         >
-          {loading ? "Processing…" : error ? "Request error" : "Result received"}
+          {loading
+            ? "Waiting for backend…"
+            : error
+              ? "Request error"
+              : "Result received"}
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {PIPELINE_STAGES.map((stage, index) => {
-          const state = getStageState(index);
-          const active = state === "active";
-          const complete = state === "complete";
-          const failed = state === "failed";
-          const skipped = state === "skipped";
+      {loading ? (
+        <IllustrativePipelineProgress reducedMotion={reducedMotion} />
+      ) : (
+        <>
+          <PipelineStageGrid
+            loading={false}
+            reducedMotion={reducedMotion}
+            activeStage={PIPELINE_STAGES.length}
+            getStageState={getResultStageState}
+            getStageMessage={getResultStageMessage}
+          />
 
-          const borderColor = active
-            ? BLUE
-            : complete
-              ? "#86EFAC"
-              : failed
-                ? "#FCA5A5"
-                : BORDER;
-
-          const backgroundColor = active
-            ? "#F0F5FF"
-            : complete
-              ? "#F0FDF4"
-              : failed
-                ? "#FEF2F2"
-                : "#FAFAF9";
-
-          return (
-            <div key={stage.name} className="relative">
-              <div
-                className={`h-full rounded-xl border p-3 transition-all duration-500 ${
-                  active ? "animate-pulse" : ""
-                }`}
-                style={{
-                  borderColor,
-                  backgroundColor,
-                  boxShadow: active ? `0 0 0 2px ${BLUE}20` : "none",
-                }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
-                    style={{
-                      color: failed
-                        ? "#991B1B"
-                        : complete
-                          ? "#166534"
-                          : PURPLE,
-                      backgroundColor: failed
-                        ? "#FEE2E2"
-                        : complete
-                          ? "#DCFCE7"
-                          : "#E5DBE6",
-                    }}
-                  >
-                    {complete
-                      ? "✓"
-                      : failed
-                        ? "!"
-                        : active
-                          ? "…"
-                          : skipped
-                            ? "—"
-                            : index + 1}
-                  </span>
-
-                  {active && (
-                    <span
-                      className="h-4 w-4 animate-spin rounded-full border-2"
-                      style={{
-                        borderColor: BLUE,
-                        borderTopColor: "transparent",
-                      }}
-                      aria-label="Stage in progress"
-                    />
-                  )}
-                </div>
-
-                <h3
-                  className="mt-3 text-sm font-semibold"
-                  style={{ color: PURPLE }}
-                >
-                  {stage.name}
-                </h3>
-
-                <p
-                  className="mt-1 min-h-10 text-xs leading-5"
-                  style={{ color: MUTED_TEXT }}
-                >
-                  {stage.detail}
-                </p>
-
-                <p
-                  className="mt-2 text-xs font-semibold"
-                  style={{
-                    color: failed
-                      ? "#991B1B"
-                      : complete
-                        ? "#166534"
-                        : active
-                          ? PURPLE
-                          : MUTED_TEXT,
-                  }}
-                >
-                  {getStageMessage(index, state)}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {loading && (
-        <p className="mt-4 text-xs" style={{ color: MUTED_TEXT }}>
-          The animation is a visual progress indicator, not a live backend
-          event stream. Actual evaluation and correction results appear when
-          the backend response arrives.
-        </p>
-      )}
-
-      {!loading && error && (
-        <p className="mt-4 text-sm" style={{ color: "#991B1B" }}>
-          The request did not complete successfully. Check the error message
-          below.
-        </p>
+          {error && (
+            <p className="mt-4 text-sm" style={{ color: "#991B1B" }}>
+              The request did not complete successfully. Check the error message
+              below.
+            </p>
+          )}
+        </>
       )}
     </section>
   );

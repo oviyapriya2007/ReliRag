@@ -42,14 +42,33 @@ function AppShell() {
 
   <NavLink
     to="/comparison"
-    className="rounded-lg px-4 py-3 transition hover:bg-white/10"
+    className={({ isActive }) =>
+      `rounded-lg px-4 py-3 transition ${
+        isActive ? 'bg-white/20 font-semibold' : 'hover:bg-white/10'
+      }`
+    }
   >
     Comparison Lab
   </NavLink>
 
   <NavLink
+    to="/correction-demo"
+    className={({ isActive }) =>
+      `rounded-lg px-4 py-3 transition ${
+        isActive ? 'bg-white/20 font-semibold' : 'hover:bg-white/10'
+      }`
+    }
+  >
+    Correction Demo
+  </NavLink>
+
+  <NavLink
     to="/analytics"
-    className="rounded-lg px-4 py-3 transition hover:bg-white/10"
+    className={({ isActive }) =>
+      `rounded-lg px-4 py-3 transition ${
+        isActive ? 'bg-white/20 font-semibold' : 'hover:bg-white/10'
+      }`
+    }
   >
     Analytics
   </NavLink>
