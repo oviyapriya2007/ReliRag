@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getQuery, USE_MOCK } from "../../api/client";
@@ -196,18 +195,14 @@ function AnswerComparison({ before, after }) {
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <article className="rounded-xl border border-red-200 bg-red-50/40 p-4">
-          <h3 className="font-bold text-red-800">
-            Original answer
-          </h3>
+          <h3 className="font-bold text-red-800">Original answer</h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
             {beforeText || "No original answer was returned."}
           </p>
         </article>
 
         <article className="rounded-xl border border-green-200 bg-green-50/40 p-4">
-          <h3 className="font-bold text-green-800">
-            Latest answer
-          </h3>
+          <h3 className="font-bold text-green-800">Latest answer</h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
             {afterText || "No latest answer was returned."}
           </p>
@@ -275,23 +270,33 @@ function PipelineStepper({ attempts }) {
   const stages = [
     {
       ...PIPELINE_STAGES[0],
-      done: Boolean(first?.retrieval?.length || first?.retrieved_evidence?.length),
-      detail: first?.timings?.retrieve_ms != null
-        ? `${first.timings.retrieve_ms} ms`
-        : "Timing unavailable",
+      done: Boolean(
+        first?.retrieval?.length || first?.retrieved_evidence?.length
+      ),
+      detail:
+        first?.timings?.retrieve_ms != null
+          ? `${first.timings.retrieve_ms} ms`
+          : "Timing unavailable",
     },
     {
       ...PIPELINE_STAGES[1],
       done: Boolean(first?.answer),
-      detail: first?.timings?.generate_ms != null
-        ? `${first.timings.generate_ms} ms`
-        : "Timing unavailable",
+      detail:
+        first?.timings?.generate_ms != null
+          ? `${first.timings.generate_ms} ms`
+          : "Timing unavailable",
     },
     {
       ...PIPELINE_STAGES[2],
       done: Boolean(firstEvaluation),
       detail: firstEvaluation
-        ? formatVerdict(firstEvaluation.passed === true ? "PASSED" : firstEvaluation.passed === false ? "FAILED" : "NOT EVALUATED")
+        ? formatVerdict(
+            firstEvaluation.passed === true
+              ? "PASSED"
+              : firstEvaluation.passed === false
+                ? "FAILED"
+                : "NOT EVALUATED"
+          )
         : "Evaluation unavailable",
     },
     {
@@ -304,9 +309,16 @@ function PipelineStepper({ attempts }) {
     {
       ...PIPELINE_STAGES[4],
       done: hasCorrection && Boolean(latestEvaluation),
-      detail: hasCorrection && latestEvaluation
-        ? formatVerdict(latestEvaluation.passed === true ? "PASSED" : latestEvaluation.passed === false ? "FAILED" : "NOT EVALUATED")
-        : "Re-evaluation unavailable",
+      detail:
+        hasCorrection && latestEvaluation
+          ? formatVerdict(
+              latestEvaluation.passed === true
+                ? "PASSED"
+                : latestEvaluation.passed === false
+                  ? "FAILED"
+                  : "NOT EVALUATED"
+            )
+          : "Re-evaluation unavailable",
     },
   ];
 
@@ -316,8 +328,8 @@ function PipelineStepper({ attempts }) {
         Correction pipeline
       </h2>
       <p className="mt-2 text-sm text-gray-500">
-        Stage indicators are inferred from the attempt data returned by the backend.
-        Unavailable timings are not estimated.
+        Stage indicators are inferred from the attempt data returned by the
+        backend. Unavailable timings are not estimated.
       </p>
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -370,11 +382,8 @@ function CorrectionReason({ first, latest }) {
     first?.feedback ??
     latest?.feedback;
 
-  const originalQuestion =
-    first?.retrieval_query ?? null;
-
-  const rewrittenQuestion =
-    latest?.retrieval_query ?? null;
+  const originalQuestion = first?.retrieval_query ?? null;
+  const rewrittenQuestion = latest?.retrieval_query ?? null;
 
   return (
     <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
@@ -426,8 +435,8 @@ function CorrectionReason({ first, latest }) {
 
       {first && latest && first === latest && (
         <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Only one attempt is available. A separate correction attempt
-          has not been returned for this query.
+          Only one attempt is available. A separate correction attempt has
+          not been returned for this query.
         </p>
       )}
     </section>
@@ -438,9 +447,12 @@ function SettingsPanel() {
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem("relirag_evaluation_settings");
-      return saved
-        ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }
-        : DEFAULT_SETTINGS;
+      const parsed = saved ? JSON.parse(saved) : {};
+
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+      };
     } catch {
       return DEFAULT_SETTINGS;
     }
@@ -456,7 +468,7 @@ function SettingsPanel() {
           JSON.stringify(updated)
         );
       } catch {
-        // The settings remain usable for the current page session.
+        // Keep the setting available for the current page session.
       }
 
       return updated;
@@ -472,7 +484,7 @@ function SettingsPanel() {
         JSON.stringify(DEFAULT_SETTINGS)
       );
     } catch {
-      // Ignore storage errors and retain the default state.
+      // Retain the default state if storage is unavailable.
     }
   };
 
@@ -486,8 +498,9 @@ function SettingsPanel() {
       </summary>
 
       <p className="mt-2 text-sm text-gray-500">
-        These preferences are saved in this browser. They are not
-        automatically sent to the backend by this evaluation page.
+        These preferences are saved in this browser. Top-k is sent with new
+        queries from Ask. The evaluator threshold and similarity gate are
+        frontend preferences and do not change backend processing.
       </p>
 
       <div className="mt-5 space-y-5">
@@ -508,7 +521,7 @@ function SettingsPanel() {
             className="mt-3 w-full accent-purple-700"
           />
           <span className="text-xs text-gray-500">
-            Number of passages to request during retrieval.
+            Number of passages requested during retrieval for new queries.
           </span>
         </label>
 
@@ -529,7 +542,7 @@ function SettingsPanel() {
             className="mt-3 w-full accent-purple-700"
           />
           <span className="text-xs text-gray-500">
-            Preferred minimum evaluation score.
+            Minimum score used by the frontend threshold assessment below.
           </span>
         </label>
 
@@ -550,7 +563,8 @@ function SettingsPanel() {
             className="mt-3 w-full accent-purple-700"
           />
           <span className="text-xs text-gray-500">
-            Preferred minimum retrieval similarity.
+            Preferred minimum similarity for inspecting retrieved evidence.
+            This setting does not filter backend retrieval.
           </span>
         </label>
 
@@ -575,8 +589,7 @@ function Evaluation() {
   const [error, setError] = useState("");
   const [selectedClaim, setSelectedClaim] = useState(null);
 
-  const queryId =
-    id || sessionStorage.getItem("relirag_last_query_id");
+  const queryId = id || sessionStorage.getItem("relirag_last_query_id");
 
   useEffect(() => {
     let cancelled = false;
@@ -611,15 +624,10 @@ function Evaluation() {
         setQuery(response);
 
         const actualId = response?.query_id ?? queryId;
-        sessionStorage.setItem(
-          "relirag_last_query_id",
-          String(actualId)
-        );
+        sessionStorage.setItem("relirag_last_query_id", String(actualId));
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err?.message || "Failed to load evaluation details."
-          );
+          setError(err?.message || "Failed to load evaluation details.");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -650,10 +658,7 @@ function Evaluation() {
     query?.answer ??
     "";
 
-  const evaluation =
-    attempt?.evaluation ??
-    query?.evaluation ??
-    {};
+  const evaluation = attempt?.evaluation ?? query?.evaluation ?? {};
 
   const claims =
     evaluation?.claim_analysis ??
@@ -669,10 +674,7 @@ function Evaluation() {
     query?.retrieved_evidence ??
     [];
 
-  const citations =
-    attempt?.citations ??
-    query?.citations ??
-    [];
+  const citations = attempt?.citations ?? query?.citations ?? [];
 
   const scores = [
     {
@@ -697,6 +699,54 @@ function Evaluation() {
         "Measures how relevant the retrieved evidence is to the question.",
     },
   ];
+
+  // Read the saved evaluator threshold.
+  const evaluatorThreshold = (() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("relirag_evaluation_settings") || "{}"
+      );
+      const value = Number(saved.evaluatorThreshold ?? 0.7);
+
+      return Number.isFinite(value) && value >= 0 && value <= 1
+        ? value
+        : 0.7;
+    } catch {
+      return 0.7;
+    }
+  })();
+
+  // Compare the backend scores against the saved threshold.
+  // This is a frontend assessment, not a new backend evaluation.
+  const thresholdResults = scores.map((score) => {
+    const raw = score.value;
+
+    if (
+      raw === null ||
+      raw === undefined ||
+      raw === "" ||
+      !Number.isFinite(Number(raw))
+    ) {
+      return { ...score, passed: null };
+    }
+
+    const numericScore = Number(raw);
+    const normalizedScore =
+      numericScore <= 1 ? numericScore : numericScore / 100;
+
+    return {
+      ...score,
+      passed: normalizedScore >= evaluatorThreshold,
+    };
+  });
+
+  const availableThresholdResults = thresholdResults.filter(
+    (score) => score.passed !== null
+  );
+
+  const thresholdCheckPassed =
+    availableThresholdResults.length === scores.length &&
+    availableThresholdResults.every((score) => score.passed);
 
   return (
     <div className="space-y-6">
@@ -784,10 +834,7 @@ function Evaluation() {
             </>
           )}
 
-          <CorrectionReason
-            first={initialAttempt}
-            latest={attempt}
-          />
+          <CorrectionReason first={initialAttempt} latest={attempt} />
 
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <p
@@ -844,6 +891,90 @@ function Evaluation() {
                   description={score.description}
                 />
               ))}
+            </div>
+          </section>
+
+          {/* New frontend-only evaluator threshold assessment. */}
+          <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
+            <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
+              Evaluator Threshold Check
+            </h2>
+            <p className="mt-2 text-sm text-gray-500">
+              Compares the backend evaluation scores with your saved
+              threshold. This does not change the backend verdict or rerun
+              the evaluator.
+            </p>
+
+            <div
+              className="mt-4 rounded-xl border p-4"
+              style={{ borderColor: BORDER }}
+            >
+              <p className="text-sm text-gray-600">
+                Required minimum score
+              </p>
+              <p className="mt-1 text-2xl font-bold" style={{ color: PURPLE }}>
+                {Math.round(evaluatorThreshold * 100)}%
+              </p>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {thresholdResults.map((score) => (
+                <div
+                  key={score.title}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4"
+                  style={{ borderColor: BORDER }}
+                >
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      {score.title}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Score: {formatScore(score.value)}
+                    </p>
+                  </div>
+
+                  <span
+                    className="rounded-full px-3 py-1 text-xs font-semibold"
+                    style={
+                      score.passed === null
+                        ? { color: "#57534E", backgroundColor: "#F5F5F4" }
+                        : score.passed
+                          ? { color: GREEN, backgroundColor: "#DCFCE7" }
+                          : { color: RED, backgroundColor: "#FEE2E2" }
+                    }
+                  >
+                    {score.passed === null
+                      ? "NOT AVAILABLE"
+                      : score.passed
+                        ? "PASS"
+                        : "BELOW THRESHOLD"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="mt-4 rounded-xl p-4"
+              style={
+                availableThresholdResults.length !== scores.length
+                  ? { color: "#57534E", backgroundColor: "#F5F5F4" }
+                  : thresholdCheckPassed
+                    ? { color: GREEN, backgroundColor: "#DCFCE7" }
+                    : { color: RED, backgroundColor: "#FEE2E2" }
+              }
+            >
+              <p className="font-bold">
+                {availableThresholdResults.length !== scores.length
+                  ? "Threshold check incomplete"
+                  : thresholdCheckPassed
+                    ? "All three scores meet the threshold"
+                    : "One or more scores are below the threshold"}
+              </p>
+              <p className="mt-1 text-sm">
+                {availableThresholdResults.length !== scores.length
+                  ? "The overall check requires all three evaluation scores."
+                  : "This is a frontend assessment, not a new backend evaluation."}
+              </p>
             </div>
           </section>
 

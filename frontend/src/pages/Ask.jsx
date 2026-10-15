@@ -63,7 +63,7 @@ function formatScore(value) {
   if (!Number.isFinite(number)) return "N/A";
 
   return `${Math.round(
-    (number <= 1 ? number * 100 : number),
+    number <= 1 ? number * 100 : number,
   )}%`;
 }
 
@@ -403,13 +403,18 @@ function EvidenceExplorer({ citations, retrieval }) {
           )}
 
           {citations?.length > 0 && (
-            <div className="rounded-lg p-3" style={{ backgroundColor: "#F5F5F4" }}>
+            <div
+              className="rounded-lg p-3"
+              style={{ backgroundColor: "#F5F5F4" }}
+            >
               <p className="text-sm font-semibold">Answer citations</p>
               <p className="mt-1 text-sm" style={{ color: MUTED_TEXT }}>
                 {citations
                   .map((citation) =>
                     typeof citation === "object"
-                      ? citation.filename || citation.id || JSON.stringify(citation)
+                      ? citation.filename ||
+                        citation.id ||
+                        JSON.stringify(citation)
                       : citation,
                   )
                   .join(", ")}
@@ -449,21 +454,30 @@ function RetrievalDebugPanel({ retrieval, timings, attempts }) {
         <div className="mt-4 space-y-4">
           <div>
             <h3 className="text-sm font-semibold">Retrieved chunks</h3>
-            <pre className="mt-2 overflow-x-auto rounded-lg p-3 text-xs" style={{ backgroundColor: "#F5F5F4" }}>
+            <pre
+              className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
+              style={{ backgroundColor: "#F5F5F4" }}
+            >
               {JSON.stringify(retrieval || [], null, 2)}
             </pre>
           </div>
 
           <div>
             <h3 className="text-sm font-semibold">Timings</h3>
-            <pre className="mt-2 overflow-x-auto rounded-lg p-3 text-xs" style={{ backgroundColor: "#F5F5F4" }}>
+            <pre
+              className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
+              style={{ backgroundColor: "#F5F5F4" }}
+            >
               {JSON.stringify(timings || {}, null, 2)}
             </pre>
           </div>
 
           <div>
             <h3 className="text-sm font-semibold">Query attempts</h3>
-            <pre className="mt-2 overflow-x-auto rounded-lg p-3 text-xs" style={{ backgroundColor: "#F5F5F4" }}>
+            <pre
+              className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
+              style={{ backgroundColor: "#F5F5F4" }}
+            >
               {JSON.stringify(attempts || [], null, 2)}
             </pre>
           </div>
@@ -609,9 +623,32 @@ export default function Ask() {
     setShowDebug(false);
 
     try {
+      // Read Top-k from Evaluation settings.
+      let topK = 5;
+
+      try {
+        const savedSettings = JSON.parse(
+          localStorage.getItem("relirag_evaluation_settings") || "{}"
+        );
+
+        const configuredTopK = Number(savedSettings.topK);
+
+        if (
+          Number.isInteger(configuredTopK) &&
+          configuredTopK >= 1 &&
+          configuredTopK <= 10
+        ) {
+          topK = configuredTopK;
+        }
+      } catch {
+        // Keep the default Top-k value if settings are unavailable.
+      }
+
+      // Send Top-k along with the question.
       const data = await runQuery({
         question: submittedQuestion,
         documentIds: selectedDocuments,
+        k: topK,
       });
 
       setResult(data);
@@ -788,7 +825,10 @@ export default function Ask() {
 
           {result && (
             <>
-              <section className="rounded-xl border bg-white p-5" style={panelStyle}>
+              <section
+                className="rounded-xl border bg-white p-5"
+                style={panelStyle}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="font-semibold" style={{ color: PURPLE }}>
                     Query Result
@@ -805,9 +845,7 @@ export default function Ask() {
                       color: "#92400E",
                     }}
                   >
-                    <p className="font-bold">
-                      Insufficient Evidence
-                    </p>
+                    <p className="font-bold">Insufficient Evidence</p>
                     <p className="mt-2 text-sm leading-6">
                       The retrieved documents do not provide enough
                       reliable evidence to answer this question confidently.
@@ -848,7 +886,10 @@ export default function Ask() {
                 attempt={latestAttempt}
               />
 
-              <section className="rounded-xl border bg-white p-5" style={panelStyle}>
+              <section
+                className="rounded-xl border bg-white p-5"
+                style={panelStyle}
+              >
                 <button
                   type="button"
                   onClick={() => setShowEvidence((value) => !value)}
@@ -872,7 +913,10 @@ export default function Ask() {
                 )}
               </section>
 
-              <section className="rounded-xl border bg-white p-5" style={panelStyle}>
+              <section
+                className="rounded-xl border bg-white p-5"
+                style={panelStyle}
+              >
                 <button
                   type="button"
                   onClick={() => setShowDebug((value) => !value)}
