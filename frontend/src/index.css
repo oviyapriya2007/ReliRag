@@ -1,105 +1,174 @@
 @import "tailwindcss";
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+:root {
+  /* Global theme */
+  --text: #6b6375;
+  --text-h: #554188;
+  --bg: #ffffff;
+  --border: #e5db e6;
+  --code-bg: #f5f5f4;
+
+  /* RELI-RAG UI palette */
+  --color-primary: #554188;
+  --color-primary-soft: #7080da;
+  --color-blue: #738fbd;
+  --color-blue-soft: #a8c3d4;
+  --color-pink: #db88a4;
+  --color-lavender: #e5dbe6;
+  --color-rose: #bbadad;
+  --color-background: #f5f5f4;
+
+  /* Evaluation status colours */
+  --status-passed: #22c55e;
+  --status-corrected: #f59e0b;
+  --status-failed: #ef4444;
+  --status-insufficient: #9ca3af;
+
+  /* Accent */
+  --accent: #554188;
+  --accent-bg: rgba(85, 65, 136, 0.1);
+  --accent-border: rgba(85, 65, 136, 0.5);
+  --social-bg: rgba(245, 245, 244, 0.5);
+
+  /* Shadow */
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px,
+    rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  /* Fonts */
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --heading: system-ui, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
+  font-family: var(--sans);
+  font-size: 18px;
+  line-height: 145%;
   letter-spacing: 0.18px;
-  color-scheme: light dark;
+
+  /* Keep native controls in light mode */
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
 
-  @media (max-width: 1024px) {
+/* Responsive base font size */
+@media (max-width: 1024px) {
+  :root {
     font-size: 16px;
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
+/* Base page styles */
 body {
   margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
 }
 
-
+/* Application root */
 #root {
   width: 100%;
   max-width: none;
-  margin: 0;
-  text-align: left;
   min-height: 100vh;
+  margin: 0;
   display: flex;
   flex-direction: column;
+  text-align: left;
   box-sizing: border-box;
 }
 
+/* Headings */
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  font-weight: 700;
   color: var(--text-h);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+  font-size: 36px;
+  line-height: 1.2;
+  letter-spacing: -0.8px;
+  margin: 0;
 }
+
 h2 {
   font-size: 24px;
-  line-height: 118%;
+  line-height: 1.3;
   letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
+  margin: 0;
+}
+
+h3 {
+  color: var(--text-h);
+}
+
+@media (max-width: 1024px) {
+  h1 {
+    font-size: 30px;
+  }
+
+  h2 {
+    font-size: 21px;
   }
 }
+
+/* Paragraphs */
 p {
   margin: 0;
 }
 
+/* Form controls */
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  color: #554188;
+  background-color: #ffffff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #8a8294;
+  opacity: 1;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Keyboard accessibility */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-primary-soft);
+  outline-offset: 2px;
+}
+
+/* Code styling */
 code,
 .counter {
   font-family: var(--mono);
-  display: inline-flex;
   border-radius: 4px;
   color: var(--text-h);
 }
@@ -109,21 +178,4 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
-}
-:root {
-  /* RELI-RAG UI palette */
-  --color-primary: #554188;
-  --color-primary-soft: #7080DA;
-  --color-blue: #738fbd;
-  --color-blue-soft: #a8c3d4;
-  --color-pink: #db88a4;
-  --color-lavender: #E5DBE6;
-  --color-rose: #BBADAD;
-  --color-background: #F5F5F4;
-
-  /* Evaluation status colours */
-  --status-passed: #22c55e;
-  --status-corrected: #f59e0b;
-  --status-failed: #ef4444;
-  --status-insufficient: #9ca3af;
 }

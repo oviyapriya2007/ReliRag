@@ -152,7 +152,12 @@ async function deleteDocument(documentId) {
   return response.json()
 }
 
-async function runQuery({ question, documentIds, mode = 'basic', k = 5 }) {
+async function runQuery({
+  question,
+  documentIds,
+  mode = 'basic',
+  k = 5,
+}) {
   if (USE_MOCK) {
     await new Promise((resolve) => setTimeout(resolve, 1200))
     return mockQueryResponse
@@ -172,7 +177,9 @@ async function runQuery({ question, documentIds, mode = 'basic', k = 5 }) {
   })
 
   if (!response.ok) {
-    throw new Error(await errorMessage(response, 'Query failed'))
+    throw new Error(
+      await errorMessage(response, 'Query failed'),
+    )
   }
 
   return response.json()
@@ -199,10 +206,76 @@ async function getQuery(queryId) {
   return response.json()
 }
 
+// Compare Basic RAG and RELI-RAG using the live backend.
+async function compareAnswers({
+  question,
+  documentIds,
+  k = 5,
+}) {
+  if (USE_MOCK) {
+    throw new Error(
+      'Live comparison requires mock mode to be disabled.',
+    )
+  }
+
+  const response = await fetch(`${API_BASE_URL}/compare`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      question,
+      k,
+      document_ids: documentIds?.length ? documentIds : null,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(
+      await errorMessage(response, 'Comparison failed'),
+    )
+  }
+
+  return response.json()
+}
+
+// Fetch real analytics summary from the backend.
+async function getAnalyticsSummary({
+  benchmarkRunId,
+  topDocuments = 5,
+} = {}) {
+  if (USE_MOCK) {
+    throw new Error(
+      'Live analytics requires mock mode to be disabled.',
+    )
+  }
+
+  const params = new URLSearchParams()
+  params.set('top_documents', String(topDocuments))
+
+  if (benchmarkRunId?.trim()) {
+    params.set('benchmark_run_id', benchmarkRunId.trim())
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/analytics/summary?${params.toString()}`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await errorMessage(response, 'Failed to fetch analytics'),
+    )
+  }
+
+  return response.json()
+}
+
 export {
   getDocuments,
   uploadDocument,
   deleteDocument,
   runQuery,
   getQuery,
+  compareAnswers,
+  getAnalyticsSummary,
 }

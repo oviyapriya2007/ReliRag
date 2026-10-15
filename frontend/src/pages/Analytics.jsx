@@ -1,96 +1,182 @@
+import { useEffect, useState } from 'react'
+import { USE_MOCK, getAnalyticsSummary } from '../../api/client'
 
-import { useMemo, useState } from 'react'
-import { USE_MOCK } from '../../api/client'
-import NotAvailable from '../components/NotAvailable'
-
-const evaluations = [
-  {
-    id: 'EV-104',
-    question: 'How does network segmentation improve security?',
-    date: '10 Oct 2026',
-    faithfulness: 94,
-    relevance: 91,
-    status: 'PASSED',
-  },
-  {
-    id: 'EV-103',
-    question: 'Does every firewall prevent all cyberattacks?',
-    date: '09 Oct 2026',
-    faithfulness: 94,
-    relevance: 88,
-    status: 'CORRECTED',
-  },
-  {
-    id: 'EV-102',
-    question: 'What is the purpose of a network firewall?',
-    date: '08 Oct 2026',
-    faithfulness: 62,
-    relevance: 75,
-    status: 'FAILED_AFTER_CORRECTION',
-  },
-  {
-    id: 'EV-101',
-    question: 'Explain the benefits of network security.',
-    date: '07 Oct 2026',
-    faithfulness: 0,
-    relevance: 0,
-    status: 'INSUFFICIENT_EVIDENCE',
-  },
-]
-
-const statusStyles = {
-  PASSED: 'bg-green-100 text-green-800',
-  CORRECTED: 'bg-amber-100 text-amber-800',
-  FAILED_AFTER_CORRECTION: 'bg-red-100 text-red-800',
-  INSUFFICIENT_EVIDENCE: 'bg-gray-100 text-gray-700',
+const colors = {
+  purple: '#554188',
+  blue: '#738fbd',
+  pink: '#db88a4',
+  lightBlue: '#a8c3d4',
+  border: '#E5DBE6',
+  background: '#F5F5F4',
 }
 
-const statusLabels = {
-  PASSED: 'Passed',
-  CORRECTED: 'Corrected',
-  FAILED_AFTER_CORRECTION: 'Failed after correction',
-  INSUFFICIENT_EVIDENCE: 'Insufficient evidence',
+function formatPercent(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 'N/A'
+  }
+
+  return `${(value * 100).toFixed(1)}%`
 }
 
-function AnalyticsDemo() {
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('ALL')
-  const [selectedEvaluation, setSelectedEvaluation] = useState(null)
+function formatScore(value) {
+  return formatPercent(value)
+}
 
-  const filteredEvaluations = useMemo(() => {
-    const term = search.trim().toLowerCase()
+function formatLatency(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 'N/A'
+  }
 
-    return evaluations.filter((item) => {
-      const matchesSearch =
-        item.question.toLowerCase().includes(term) ||
-        item.id.toLowerCase().includes(term)
+  return `${(value / 1000).toFixed(2)} s`
+}
 
-      const matchesStatus =
-        statusFilter === 'ALL' || item.status === statusFilter
-
-      return matchesSearch && matchesStatus
-    })
-  }, [search, statusFilter])
-
-  const completed = evaluations.filter(
-    (item) => item.status !== 'INSUFFICIENT_EVIDENCE'
+function StatCard({ label, value, note, color }) {
+  return (
+    <article className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
+      <p className="text-sm text-gray-500">{label}</p>
+      <p
+        className="mt-3 text-3xl font-bold"
+        style={{ color: color || colors.purple }}
+      >
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-gray-500">{note}</p>
+    </article>
   )
-  const averageFaithfulness = Math.round(
-    completed.reduce((sum, item) => sum + item.faithfulness, 0) /
-      completed.length
-  )
-  const correctedCount = evaluations.filter(
-    (item) => item.status === 'CORRECTED'
-  ).length
-  const failedCount = evaluations.filter(
-    (item) => item.status === 'FAILED_AFTER_CORRECTION'
-  ).length
+}
 
-  const scoreMetrics = [
-    { label: 'Faithfulness', value: 86, color: '#738fbd' },
-    { label: 'Answer relevance', value: 85, color: '#db88a4' },
-    { label: 'Context relevance', value: 82, color: '#a8c3d4' },
-  ]
+function ScoreBar({ label, value, color }) {
+  const available =
+    value !== null &&
+    value !== undefined &&
+    Number.isFinite(value)
+
+  const percentage = available
+    ? Math.max(0, Math.min(100, value * 100))
+    : 0
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+        <span className="text-sm font-bold text-gray-800">
+          {formatScore(value)}
+        </span>
+      </div>
+
+      <div
+        className="h-3 overflow-hidden rounded-full bg-gray-100"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={available ? percentage : undefined}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${percentage}%`,
+            backgroundColor: color,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ScorePanel({ title, scores, accent }) {
+  return (
+    <section className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-bold text-gray-800">{title}</h2>
+
+      <p className="mt-1 text-sm text-gray-500">
+        {scores.evaluations} usable evaluations
+      </p>
+
+      <div className="mt-6 space-y-5">
+        <ScoreBar
+          label="Faithfulness"
+          value={scores.faithfulness}
+          color={accent}
+        />
+        <ScoreBar
+          label="Answer relevance"
+          value={scores.answer_relevance}
+          color={colors.pink}
+        />
+        <ScoreBar
+          label="Context relevance"
+          value={scores.context_relevance}
+          color={colors.lightBlue}
+        />
+        <ScoreBar
+          label="Overall score"
+          value={scores.overall}
+          color={colors.purple}
+        />
+      </div>
+    </section>
+  )
+}
+
+function Analytics() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [benchmarkRunId, setBenchmarkRunId] = useState('')
+  const [topDocuments, setTopDocuments] = useState('5')
+
+  async function loadAnalytics(filters = {}) {
+    const runId = filters.benchmarkRunId ?? ''
+    const documentLimit = Number(filters.topDocuments ?? 5)
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const result = await getAnalyticsSummary({
+        benchmarkRunId: runId,
+        topDocuments: documentLimit,
+      })
+
+      setData(result)
+    } catch (err) {
+      setError(err.message || 'Failed to load analytics.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!USE_MOCK) {
+      loadAnalytics()
+    }
+  }, [])
+
+  if (USE_MOCK) {
+    return (
+      <div className="space-y-4">
+        <header>
+          <p className="text-sm font-medium" style={{ color: '#7080DA' }}>
+            PERFORMANCE OVERVIEW
+          </p>
+          <h1 className="mt-1 text-3xl font-bold" style={{ color: colors.purple }}>
+            Analytics &amp; History
+          </h1>
+        </header>
+
+        <div className="rounded-xl border border-[#E5DBE6] bg-white p-5 text-sm text-gray-700">
+          Live analytics requires mock mode to be disabled.
+          Set <code>VITE_USE_MOCK=false</code> in your frontend environment
+          configuration and restart the Vite development server.
+        </div>
+      </div>
+    )
+  }
+
+  const basic = data?.by_mode?.basic
+  const reli = data?.by_mode?.reli
+  const corrections = data?.corrections
 
   return (
     <div className="space-y-6">
@@ -98,236 +184,383 @@ function AnalyticsDemo() {
         <p className="text-sm font-medium" style={{ color: '#7080DA' }}>
           PERFORMANCE OVERVIEW
         </p>
-        <h1 className="mt-1 text-3xl font-bold" style={{ color: '#554188' }}>
-          Analytics & History
+        <h1 className="mt-1 text-3xl font-bold" style={{ color: colors.purple }}>
+          Analytics &amp; History
         </h1>
         <p className="mt-2 text-sm text-gray-500">
-          Track evaluation quality, review past questions, and inspect results.
+          Monitor real evaluation results, correction outcomes, model quality,
+          latency, and document usage.
         </p>
       </header>
 
-      <div className="rounded-xl border border-[#E5DBE6] bg-white px-4 py-3 text-sm text-gray-600">
-        <span className="font-semibold text-[#554188]">Demo mode:</span>{' '}
-        All statistics and history records on this screen are illustrative mock data.
-      </div>
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          {
-            label: 'Total evaluations',
-            value: evaluations.length,
-            note: 'Sample records',
-            color: '#554188',
-          },
-          {
-            label: 'Average faithfulness',
-            value: `${averageFaithfulness}%`,
-            note: 'Excludes insufficient evidence',
-            color: '#738fbd',
-          },
-          {
-            label: 'Corrected answers',
-            value: correctedCount,
-            note: 'Correction applied',
-            color: '#b7791f',
-          },
-          {
-            label: 'Failed evaluations',
-            value: failedCount,
-            note: 'Require review',
-            color: '#c24141',
-          },
-        ].map((card) => (
-          <article
-            key={card.label}
-            className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm"
-          >
-            <p className="text-sm text-gray-500">{card.label}</p>
-            <p
-              className="mt-3 text-3xl font-bold"
-              style={{ color: card.color }}
-            >
-              {card.value}
-            </p>
-            <p className="mt-2 text-xs text-gray-500">{card.note}</p>
-          </article>
-        ))}
-      </section>
-
       <section className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold text-gray-800">
-            Quality score overview
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Illustrative metric values for the dashboard preview.
-          </p>
-        </div>
+        <h2 className="text-lg font-bold text-gray-800">
+          Analytics filters
+        </h2>
 
-        <div className="mt-6 space-y-5">
-          {scoreMetrics.map((metric) => (
-            <div key={metric.label}>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-gray-700">
-                  {metric.label}
-                </span>
-                <span className="text-sm font-bold text-gray-800">
-                  {metric.value}%
-                </span>
-              </div>
-              <div
-                className="h-3 overflow-hidden rounded-full bg-gray-100"
-                role="progressbar"
-                aria-label={metric.label}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={metric.value}
-              >
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${metric.value}%`,
-                    backgroundColor: metric.color,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+        <p className="mt-1 text-sm text-gray-500">
+          Optionally filter by benchmark run and choose how many top documents
+          to display.
+        </p>
 
-      <section className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">
-              Evaluation history
-            </h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Search and filter previous evaluation records.
-            </p>
-          </div>
-          <span className="rounded-full bg-[#E5DBE6] px-3 py-1 text-xs font-semibold text-[#554188]">
-            {filteredEvaluations.length} RECORDS
-          </span>
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <form
+          className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            loadAnalytics({ benchmarkRunId, topDocuments })
+          }}
+        >
           <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search questions or evaluation ID..."
-            aria-label="Search evaluation history"
-            className="min-w-0 rounded-xl border border-[#E5DBE6] px-4 py-3 text-sm outline-none focus:border-[#7080DA] focus:ring-2 focus:ring-[#7080DA]/20"
+            type="text"
+            value={benchmarkRunId}
+            onChange={(event) => setBenchmarkRunId(event.target.value)}
+            placeholder="Benchmark run ID (optional)"
+            aria-label="Benchmark run ID"
+            maxLength={64}
+            className="min-w-0 rounded-xl border border-[#E5DBE6] px-4 py-3 text-sm outline-none focus:border-[#7080DA]"
           />
 
           <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            aria-label="Filter by evaluation status"
-            className="min-w-0 rounded-xl border border-[#E5DBE6] bg-white px-4 py-3 text-sm outline-none focus:border-[#7080DA]"
+            value={topDocuments}
+            onChange={(event) => setTopDocuments(event.target.value)}
+            aria-label="Number of top documents"
+            className="min-w-0 rounded-xl border border-[#E5DBE6] bg-white px-4 py-3 text-sm"
           >
-            <option value="ALL">All statuses</option>
-            <option value="PASSED">Passed</option>
-            <option value="CORRECTED">Corrected</option>
-            <option value="FAILED_AFTER_CORRECTION">
-              Failed after correction
-            </option>
-            <option value="INSUFFICIENT_EVIDENCE">
-              Insufficient evidence
-            </option>
+            <option value="5">Top 5 documents</option>
+            <option value="10">Top 10 documents</option>
+            <option value="20">Top 20 documents</option>
+            <option value="50">Top 50 documents</option>
           </select>
-        </div>
 
-        <div className="mt-5 space-y-3">
-          {filteredEvaluations.length === 0 ? (
-            <div className="rounded-xl bg-[#F5F5F4] p-8 text-center">
-              <p className="font-semibold text-gray-700">
-                No evaluations found
-              </p>
-              <p className="mt-1 text-sm text-gray-500">
-                Try a different search term or status filter.
-              </p>
-            </div>
-          ) : (
-            filteredEvaluations.map((item) => (
-              <article
-                key={item.id}
-                className="rounded-xl border border-[#E5DBE6] p-4 transition hover:bg-[#F5F5F4]/60"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-[#7080DA]">
-                      {item.id} · {item.date}
-                    </p>
-                    <h3 className="mt-2 break-words text-sm font-semibold leading-6 text-gray-800">
-                      {item.question}
-                    </h3>
-                    <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
-                      <span>Faithfulness: {item.faithfulness}%</span>
-                      <span>Relevance: {item.relevance}%</span>
-                    </div>
-                  </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-xl bg-[#554188] px-4 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? 'Loading...' : 'Apply filters'}
+          </button>
+        </form>
 
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
-                    <span
-                      className={`max-w-full rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[item.status]}`}
-                    >
-                      {statusLabels[item.status]}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedEvaluation(
-                          selectedEvaluation?.id === item.id ? null : item
-                        )
-                      }
-                      className="rounded-lg border border-[#E5DBE6] px-3 py-2 text-xs font-semibold text-[#554188] hover:bg-[#E5DBE6]/50"
-                    >
-                      {selectedEvaluation?.id === item.id
-                        ? 'Hide details'
-                        : 'View details'}
-                    </button>
-                  </div>
-                </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-gray-500">
+            {data?.benchmark_run_id
+              ? `Benchmark: ${data.benchmark_run_id}`
+              : 'Showing all available benchmark runs'}
+          </p>
 
-                {selectedEvaluation?.id === item.id && (
-                  <div className="mt-4 rounded-xl bg-[#F5F5F4] p-4">
-                    <p className="text-sm font-semibold text-gray-800">
-                      Evaluation summary
-                    </p>
-                    <p className="mt-2 break-words text-sm leading-6 text-gray-600">
-                      {item.status === 'PASSED' &&
-                        'This sample answer passed its configured checks.'}
-                      {item.status === 'CORRECTED' &&
-                        'This sample answer was revised after an evaluation check.'}
-                      {item.status === 'FAILED_AFTER_CORRECTION' &&
-                        'This sample answer did not pass after correction and needs review.'}
-                      {item.status === 'INSUFFICIENT_EVIDENCE' &&
-                        'The available evidence was insufficient to support a reliable answer.'}
-                    </p>
-                  </div>
-                )}
-              </article>
-            ))
-          )}
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              setBenchmarkRunId('')
+              setTopDocuments('5')
+              loadAnalytics({
+                benchmarkRunId: '',
+                topDocuments: '5',
+              })
+            }}
+            className="text-sm font-semibold text-[#554188] hover:underline disabled:opacity-50"
+          >
+            Reset filters
+          </button>
         </div>
       </section>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          <p className="font-semibold">Unable to load analytics</p>
+          <p className="mt-1 break-words">{error}</p>
+          <button
+            type="button"
+            onClick={() => loadAnalytics({ benchmarkRunId, topDocuments })}
+            className="mt-3 rounded-lg border border-red-300 px-3 py-2 font-semibold hover:bg-red-100"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {loading && !data && (
+        <div className="rounded-2xl border border-[#E5DBE6] bg-white p-10 text-center">
+          <p className="font-semibold text-gray-700">
+            Loading live analytics...
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            Fetching statistics from the RELI-RAG backend.
+          </p>
+        </div>
+      )}
+
+      {!data && !loading && !error && (
+        <div className="rounded-2xl border border-[#E5DBE6] bg-white p-10 text-center">
+          <p className="text-sm text-gray-600">
+            No analytics data is available yet.
+          </p>
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div className="rounded-xl border border-[#E5DBE6] bg-white px-4 py-3 text-sm text-gray-600">
+            <span className="font-semibold text-[#554188]">Live backend data:</span>{' '}
+            These metrics come from the analytics API. Only usable evaluations
+            contribute to score averages; counts and score denominators can differ.
+            {loading && ' Refreshing data...'}
+          </div>
+
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Total questions"
+              value={data.total_questions}
+              note="Queries recorded in the selected scope"
+              color={colors.purple}
+            />
+
+            <StatCard
+              label="First-pass success"
+              value={formatPercent(data.first_pass.rate)}
+              note={`${data.first_pass.count} passed out of ${data.first_pass.total} usable first-attempt evaluations`}
+              color={colors.blue}
+            />
+
+            <StatCard
+              label="Insufficient evidence"
+              value={data.insufficient_evidence}
+              note="Queries with insufficient evidence status"
+              color="#b7791f"
+            />
+
+            <StatCard
+              label="Unsupported claims"
+              value={data.unsupported_claims}
+              note="Unsupported claims in recorded evaluations"
+              color="#c24141"
+            />
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <ScorePanel
+              title="Basic RAG — Final scores"
+              scores={basic.final_scores}
+              accent={colors.blue}
+            />
+
+            <ScorePanel
+              title="RELI-RAG — Final scores"
+              scores={reli.final_scores}
+              accent={colors.pink}
+            />
+          </section>
+
+          <section className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-800">
+              First-pass performance by mode
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              The rate uses queries with a usable first-attempt evaluation.
+            </p>
+
+            <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+              {[{ name: 'Basic RAG', mode: basic }, { name: 'RELI-RAG', mode: reli }].map(
+                ({ name, mode }) => (
+                  <div
+                    key={name}
+                    className="rounded-xl bg-[#F5F5F4] p-4"
+                  >
+                    <p className="text-sm font-semibold text-gray-700">
+                      {name}
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-[#554188]">
+                      {formatPercent(mode.first_pass.rate)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {mode.first_pass.count} passed / {mode.first_pass.total} evaluated
+                      first attempts
+                    </p>
+                    <p className="mt-3 text-sm text-gray-600">
+                      Questions recorded: {mode.questions}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      Insufficient evidence: {mode.insufficient_evidence}
+                    </p>
+                  </div>
+                ),
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-800">
+              Correction performance
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Correction metrics are based on RELI-RAG queries and stored
+              correction attempts.
+            </p>
+
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="Eligible for correction"
+                value={corrections.eligible}
+                note="First attempts that failed a usable evaluation"
+                color={colors.purple}
+              />
+              <StatCard
+                label="Corrections triggered"
+                value={corrections.triggered}
+                note="Queries with a stored second attempt"
+                color={colors.blue}
+              />
+              <StatCard
+                label="Successful corrections"
+                value={corrections.successful}
+                note="Second attempt passed its evaluation"
+                color="#27845a"
+              />
+              <StatCard
+                label="Correction success rate"
+                value={formatPercent(corrections.success_rate)}
+                note="Successful corrections / triggered corrections"
+                color={colors.pink}
+              />
+            </div>
+
+            <p className="mt-4 text-sm text-gray-500">
+              Correction trigger rate: {formatPercent(corrections.trigger_rate)}
+              {' · '}
+              Failed after correction: {corrections.failed_after_correction}
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-800">
+              Average latency
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Average recorded Claude generation and evaluation times per query.
+              Retrieval and query-rewriting time are not included in this metric.
+            </p>
+
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {[
+                {
+                  label: 'Generation',
+                  value: data.by_mode.basic.latency.avg_generation_ms,
+                  note: 'Basic RAG',
+                },
+                {
+                  label: 'Evaluation',
+                  value: data.by_mode.basic.latency.avg_evaluation_ms,
+                  note: 'Basic RAG',
+                },
+                {
+                  label: 'Total recorded',
+                  value: data.by_mode.basic.latency.avg_total_ms,
+                  note: 'Basic RAG',
+                },
+              ].map((metric) => (
+                <div
+                  key={metric.label}
+                  className="rounded-xl bg-[#F5F5F4] p-4"
+                >
+                  <p className="text-sm text-gray-500">{metric.label}</p>
+                  <p className="mt-2 text-2xl font-bold text-[#554188]">
+                    {formatLatency(metric.value)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">{metric.note}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {[
+                {
+                  label: 'RELI-RAG generation',
+                  value: reli.latency.avg_generation_ms,
+                },
+                {
+                  label: 'RELI-RAG evaluation',
+                  value: reli.latency.avg_evaluation_ms,
+                },
+                {
+                  label: 'RELI-RAG total recorded',
+                  value: reli.latency.avg_total_ms,
+                },
+              ].map((metric) => (
+                <div
+                  key={metric.label}
+                  className="rounded-xl border border-[#E5DBE6] p-4"
+                >
+                  <p className="text-sm text-gray-500">{metric.label}</p>
+                  <p className="mt-2 text-xl font-bold text-[#554188]">
+                    {formatLatency(metric.value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[#E5DBE6] bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-800">
+              Top retrieved documents
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Documents ranked by retrieval-log count in the selected scope.
+            </p>
+
+            {data.top_documents.length === 0 ? (
+              <div className="mt-5 rounded-xl bg-[#F5F5F4] p-6 text-center">
+                <p className="font-semibold text-gray-700">
+                  No document usage found
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  No matching document retrievals were recorded for this scope.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-3">
+                {data.top_documents.map((document, index) => (
+                  <article
+                    key={document.document_id}
+                    className="flex flex-col gap-3 rounded-xl border border-[#E5DBE6] p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-[#7080DA]">
+                        DOCUMENT #{index + 1}
+                      </p>
+                      <h3 className="mt-1 break-words text-sm font-semibold text-gray-800">
+                        {document.filename}
+                      </h3>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Document ID: {document.document_id}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-6">
+                      <div>
+                        <p className="text-xs text-gray-500">Retrievals</p>
+                        <p className="mt-1 font-bold text-[#554188]">
+                          {document.retrievals}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Queries</p>
+                        <p className="mt-1 font-bold text-[#554188]">
+                          {document.queries}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
-  )
-}
-
-function Analytics() {
-  if (USE_MOCK) {
-    return <AnalyticsDemo />
-  }
-
-  return (
-    <NotAvailable
-      eyebrow="PERFORMANCE OVERVIEW"
-      title="Analytics & History"
-      description="Track evaluation quality, review past questions, and inspect results."
-    />
   )
 }
 
