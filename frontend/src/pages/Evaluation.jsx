@@ -263,6 +263,28 @@ function AttemptHistory({ attempts, finalAttempt }) {
                 </div>
 
                 <div className="p-4">
+                  {/* Updated: show each attempt's scores before its answer. */}
+                  <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {attemptScores.map((score) => (
+                      <div
+                        key={score.label}
+                        className="rounded-lg border p-3"
+                        style={{ borderColor: BORDER }}
+                      >
+                        <p className="text-xs text-gray-500">
+                          {score.label}
+                        </p>
+
+                        <p
+                          className="mt-1 text-xl font-bold"
+                          style={{ color: PURPLE }}
+                        >
+                          {formatScore(score.value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
                   <h4 className="text-sm font-semibold text-gray-700">
                     Answer
                   </h4>
@@ -276,31 +298,12 @@ function AttemptHistory({ attempts, finalAttempt }) {
                       <p className="text-xs font-semibold text-gray-600">
                         Evaluator feedback
                       </p>
+
                       <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-600">
                         {evaluation.feedback}
                       </p>
                     </div>
                   )}
-
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {attemptScores.map((score) => (
-                      <div
-                        key={score.label}
-                        className="rounded-lg border p-3"
-                        style={{ borderColor: BORDER }}
-                      >
-                        <p className="text-xs text-gray-500">
-                          {score.label}
-                        </p>
-                        <p
-                          className="mt-1 text-lg font-bold"
-                          style={{ color: PURPLE }}
-                        >
-                          {formatScore(score.value)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
 
                   {item.retrieval_query && (
                     <details className="mt-4">
@@ -310,6 +313,7 @@ function AttemptHistory({ attempts, finalAttempt }) {
                       >
                         View retrieval query
                       </summary>
+
                       <p className="mt-2 whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-sm leading-6 text-gray-600">
                         {item.retrieval_query}
                       </p>
@@ -489,11 +493,17 @@ function BasicVsReliComparison({ query }) {
                   </p>
                 </div>
 
-                <div className="rounded-lg p-3" style={{ backgroundColor: "#F0EBFA" }}>
+                <div
+                  className="rounded-lg p-3"
+                  style={{ backgroundColor: "#F0EBFA" }}
+                >
                   <p className="text-xs" style={{ color: PURPLE }}>
                     RELI-RAG
                   </p>
-                  <p className="mt-1 text-lg font-bold" style={{ color: PURPLE }}>
+                  <p
+                    className="mt-1 text-lg font-bold"
+                    style={{ color: PURPLE }}
+                  >
                     {reli === null ? "N/A" : `${reli.toFixed(1)}%`}
                   </p>
                 </div>
@@ -852,7 +862,7 @@ function Evaluation() {
 
       {!loading && !error && query && (
         <>
-          {/* 1. ATTEMPTS AND ANSWERS */}
+          {/* 1. QUESTION */}
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <p
               className="text-xs font-semibold uppercase tracking-wide"
@@ -861,7 +871,10 @@ function Evaluation() {
               Question
             </p>
 
-            <h2 className="mt-2 text-lg font-bold leading-7" style={{ color: PURPLE }}>
+            <h2
+              className="mt-2 text-lg font-bold leading-7"
+              style={{ color: PURPLE }}
+            >
               {question}
             </h2>
 
@@ -889,12 +902,13 @@ function Evaluation() {
             </div>
           </section>
 
+          {/* 2. ATTEMPTS, WITH SCORES AT THE TOP OF EACH ATTEMPT */}
           <AttemptHistory
             attempts={attempts}
             finalAttempt={finalAttempt}
           />
 
-          {/* 2. FINAL ANSWER AND SCORES */}
+          {/* 3. FINAL ANSWER AND SCORES */}
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <p
               className="text-xs font-semibold uppercase tracking-wide"
@@ -971,7 +985,7 @@ function Evaluation() {
             )}
           </section>
 
-          {/* 3. BEFORE / AFTER COMPARISON */}
+          {/* 4. BEFORE / AFTER COMPARISON */}
           {initialAttempt && finalAttempt && (
             <>
               {attempts.length > 1 ? (
@@ -996,7 +1010,10 @@ function Evaluation() {
               )}
 
               {attempts.length > 1 && (
-                <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
+                <section
+                  className="border bg-white p-5 shadow-sm"
+                  style={cardStyle}
+                >
                   <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
                     Score Improvement
                   </h2>
@@ -1034,7 +1051,7 @@ function Evaluation() {
             </>
           )}
 
-          {/* 4. DETAILED DIAGNOSTICS */}
+          {/* 5. DETAILED DIAGNOSTICS */}
           <CorrectionReason
             first={initialAttempt}
             latest={finalAttempt}
@@ -1117,6 +1134,7 @@ function Evaluation() {
             </div>
           </section>
 
+          {/* CLAIM ANALYSIS */}
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
               Claim Analysis
@@ -1236,7 +1254,10 @@ function Evaluation() {
                 })}
               </div>
             ) : (
-              <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
+              <div
+                className="mt-4 rounded-xl p-4"
+                style={{ backgroundColor: "#F5F5F4" }}
+              >
                 <p className="text-sm text-gray-600">
                   No individual claim analysis was returned for this attempt.
                 </p>
@@ -1244,6 +1265,7 @@ function Evaluation() {
             )}
           </section>
 
+          {/* RETRIEVED EVIDENCE */}
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
               Retrieved Evidence
@@ -1306,7 +1328,10 @@ function Evaluation() {
                 ))}
               </div>
             ) : (
-              <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
+              <div
+                className="mt-4 rounded-xl p-4"
+                style={{ backgroundColor: "#F5F5F4" }}
+              >
                 <p className="text-sm text-gray-600">
                   No retrieved evidence was returned for this query.
                 </p>
@@ -1338,7 +1363,7 @@ function Evaluation() {
             )}
           </section>
 
-          {/* 5. BASIC RAG VS RELI-RAG */}
+          {/* BASIC RAG VS RELI-RAG */}
           <BasicVsReliComparison query={query} />
 
           <footer className="flex flex-wrap gap-3">
@@ -1374,3 +1399,4 @@ function Evaluation() {
 }
 
 export default Evaluation;
+
