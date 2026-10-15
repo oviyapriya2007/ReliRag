@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -15,9 +16,14 @@ const MUTED_TEXT = "#57534E";
 
 const HISTORY_KEY = "relirag_query_history";
 const LAST_QUERY_KEY = "relirag_last_query_id";
+const SETTINGS_KEY = "relirag_evaluation_settings";
 const MAX_HISTORY = 10;
 
-// Values must match QueryRequest.mode in backend/app/schemas.py.
+const panelStyle = {
+  borderColor: BORDER,
+  borderRadius: "12px",
+};
+
 const QUERY_MODES = [
   {
     value: "basic",
@@ -30,12 +36,202 @@ const QUERY_MODES = [
     description: "Evaluation + up to one correction retry",
   },
 ];
+
 const DEFAULT_MODE = "reli";
 
-const panelStyle = {
-  borderColor: BORDER,
-  borderRadius: "12px",
+const DEFAULT_SETTINGS = {
+  topK: 5,
+  evaluatorThreshold: 0.7,
+  similarityGate: 0.5,
 };
+
+const PIPELINE_STAGES = [
+  {
+    name: "Retrieve",
+    detail: "Finding relevant document passages",
+  },
+  {
+    name: "Generate",
+    detail: "Generating an evidence-based answer",
+  },
+  {
+    name: "Evaluate",
+    detail: "Checking answer quality and faithfulness",
+  },
+  {
+    name: "Correct",
+    detail: "Attempting to improve a failed answer",
+  },
+  {
+    name: "Re-evaluate",
+    detail: "Checking the updated answer",
+  },
+];
+
+function readSettings() {
+  try {
+    return {
+      ...DEFAULT_SETTINGS,
+      ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"),
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+// Collapsible evaluation settings panel
+function EvaluationSettingsPanel() {
+  const [settings, setSettings] = useState(readSettings);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch {
+      // Settings are optional if browser storage is unavailable.
+    }
+  }, [settings]);
+
+  function updateSetting(name, value) {
+    setSettings((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border bg-white" style={panelStyle}>
+      <button
+        type="button"
+        onClick={() => setExpanded((previous) => !previous)}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-4 p-5 text-left transition hover:bg-gray-50"
+      >
+        <span className="min-w-0">
+          <span
+            className="block font-semibold"
+            style={{ color: PURPLE }}
+          >
+            Evaluation settings
+          </span>
+          <span
+            className="mt-1 block text-sm"
+            style={{ color: MUTED_TEXT }}
+          >
+            Configure retrieval preferences
+          </span>
+        </span>
+
+        <span
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg transition-transform duration-300"
+          style={{
+            backgroundColor: "#F0ECF7",
+            color: PURPLE,
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+          }}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
+      </button>
+
+      {expanded && (
+        <div
+          className="border-t p-5"
+          style={{ borderColor: BORDER }}
+        >
+          <p className="text-sm leading-6" style={{ color: MUTED_TEXT }}>
+            These preferences are saved in this browser. Top-k is sent with
+            new queries. The similarity gate is a frontend preference and
+            does not change backend processing. Pass/fail verdicts come from
+            the backend.
+          </p>
+
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="ask-top-k" className="text-sm font-medium">
+                  Top-k retrieval
+                </label>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: PURPLE }}
+                >
+                  {settings.topK}
+                </span>
+              </div>
+
+              <input
+                id="ask-top-k"
+                type="range"
+                min="1"
+                max="10"
+                step="1"
+                value={settings.topK}
+                onChange={(event) =>
+                  updateSetting("topK", Number(event.target.value))
+                }
+                className="mt-3 w-full"
+              />
+
+              <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
+                Number of passages requested during retrieval.
+              </p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <label
+                  htmlFor="ask-similarity-gate"
+                  className="text-sm font-medium"
+                >
+                  Similarity gate
+                </label>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: PURPLE }}
+                >
+                  {Number(settings.similarityGate).toFixed(2)}
+                </span>
+              </div>
+
+              <input
+                id="ask-similarity-gate"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={settings.similarityGate}
+                onChange={(event) =>
+                  updateSetting("similarityGate", Number(event.target.value))
+                }
+                className="mt-3 w-full"
+              />
+
+              <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
+                Preferred minimum similarity when inspecting evidence.
+              </p>
+            </div>
+          </div>
+
+          <div
+            className="mt-5 border-t pt-4"
+            style={{ borderColor: BORDER }}
+          >
+            <button
+              type="button"
+              onClick={() => setSettings({ ...DEFAULT_SETTINGS })}
+              className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50"
+              style={{ borderColor: BORDER, color: DARK_TEXT }}
+            >
+              Reset settings
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function readHistory() {
   try {
@@ -50,10 +246,10 @@ function saveHistory(history) {
   try {
     localStorage.setItem(
       HISTORY_KEY,
-      JSON.stringify(history.slice(0, MAX_HISTORY)),
+      JSON.stringify(history.slice(0, MAX_HISTORY))
     );
   } catch {
-    // The query can still be used if browser storage is unavailable.
+    // Query history is optional.
   }
 }
 
@@ -74,20 +270,16 @@ function formatScore(value) {
   }
 
   const number = Number(value);
-
   if (!Number.isFinite(number)) return "N/A";
 
-  return `${Math.round(
-    number <= 1 ? number * 100 : number,
-  )}%`;
+  return `${Math.round(number <= 1 ? number * 100 : number)}%`;
 }
 
 function StatusBadge({ status }) {
   const normalized = (status || "UNKNOWN").toUpperCase();
   const insufficient = normalized.includes("INSUFFICIENT");
   const failed =
-    normalized.includes("FAILED") ||
-    normalized.includes("ERROR");
+    normalized.includes("FAILED") || normalized.includes("ERROR");
 
   const color = insufficient
     ? "#92400E"
@@ -172,10 +364,7 @@ function HistorySidebar({ history, onClear }) {
                 <StatusBadge status={item.status} />
               </div>
 
-              <p
-                className="mt-2 text-xs"
-                style={{ color: MUTED_TEXT }}
-              >
+              <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
                 {item.timestamp
                   ? new Date(item.timestamp).toLocaleString()
                   : "Recent query"}
@@ -193,8 +382,8 @@ function HistorySidebar({ history, onClear }) {
         className="mt-4 border-t pt-3 text-xs"
         style={{ borderColor: BORDER, color: MUTED_TEXT }}
       >
-        History is stored in this browser. Detailed results require
-        the backend query to remain available.
+        History is stored in this browser. Detailed results require the
+        backend query to remain available.
       </p>
     </aside>
   );
@@ -261,9 +450,7 @@ function DocumentSelector({
 }) {
   const allSelected =
     documents.length > 0 &&
-    documents.every((doc) =>
-      selectedDocuments.includes(String(doc.id)),
-    );
+    documents.every((doc) => selectedDocuments.includes(String(doc.id)));
 
   return (
     <section className="rounded-xl border bg-white p-5" style={panelStyle}>
@@ -338,6 +525,258 @@ function DocumentSelector({
   );
 }
 
+// Animated workflow. The moving indicator is illustrative;
+// final stage information is inferred from the backend response.
+function CorrectionPipeline({ loading, result, error, mode }) {
+  const [activeStage, setActiveStage] = useState(0);
+
+  useEffect(() => {
+    if (!loading) {
+      setActiveStage(0);
+      return undefined;
+    }
+
+    setActiveStage(0);
+
+    const interval = window.setInterval(() => {
+      setActiveStage((current) =>
+        Math.min(current + 1, PIPELINE_STAGES.length - 1)
+      );
+    }, 1400);
+
+    return () => window.clearInterval(interval);
+  }, [loading]);
+
+  if (!loading && !result && !error) return null;
+
+  const attempts = result?.attempts || [];
+  const finalAttempt =
+    attempts.find(
+      (attempt) =>
+        result?.final_attempt_number != null &&
+        Number(attempt.attempt_number) ===
+          Number(result.final_attempt_number)
+    ) || attempts[attempts.length - 1];
+
+  const evaluation = finalAttempt?.evaluation;
+  const evaluated = Boolean(evaluation);
+  const correctionAttempted = attempts.length > 1;
+
+  function getStageState(index) {
+    if (loading) {
+      if (index < activeStage) return "complete";
+      if (index === activeStage) return "active";
+      return "pending";
+    }
+
+    if (error) return index === 0 ? "failed" : "pending";
+    if (!result) return "pending";
+
+    if (index === 0) return "complete";
+
+    if (index === 1) {
+      return result.final_answer || result.answer || finalAttempt?.answer
+        ? "complete"
+        : "pending";
+    }
+
+    if (index === 2) {
+      if (!evaluated) return "unknown";
+      return evaluation?.passed === false ? "failed" : "complete";
+    }
+
+    if (index === 3) {
+      if (mode === "basic" || result.mode === "basic") return "skipped";
+      return correctionAttempted ? "complete" : "skipped";
+    }
+
+    if (index === 4) {
+      if (mode === "basic" || result.mode === "basic") return "skipped";
+      if (!correctionAttempted) return "skipped";
+      if (!evaluated) return "unknown";
+      return evaluation?.passed === false ? "failed" : "complete";
+    }
+
+    return "pending";
+  }
+
+  function getStageMessage(index, state) {
+    if (loading && state === "active") return "In progress…";
+    if (loading && state === "complete") return "Progress indicator";
+    if (state === "failed") return "Check result";
+    if (state === "skipped") return "Not required / not reported";
+    if (state === "unknown") return "Evaluation data unavailable";
+    if (state === "complete") {
+      if (index === 2) {
+        return evaluation?.passed === true
+          ? "Evaluation passed"
+          : "Evaluation completed";
+      }
+      if (index === 3) return "Retry found in result";
+      if (index === 4) return "Final evaluation received";
+      return "Completed";
+    }
+    return "Waiting";
+  }
+
+  return (
+    <section
+      className="rounded-xl border bg-white p-5"
+      style={panelStyle}
+      aria-live="polite"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold" style={{ color: PURPLE }}>
+            Correction Pipeline
+          </h2>
+          <p className="mt-1 text-sm" style={{ color: MUTED_TEXT }}>
+            Follow the answer generation and evaluation workflow.
+          </p>
+        </div>
+
+        <span
+          className="rounded-full px-3 py-1 text-xs font-semibold"
+          style={{
+            color: loading ? PURPLE : error ? "#991B1B" : "#166534",
+            backgroundColor: loading
+              ? "#EAF0FA"
+              : error
+                ? "#FEE2E2"
+                : "#DCFCE7",
+          }}
+        >
+          {loading ? "Processing…" : error ? "Request error" : "Result received"}
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {PIPELINE_STAGES.map((stage, index) => {
+          const state = getStageState(index);
+          const active = state === "active";
+          const complete = state === "complete";
+          const failed = state === "failed";
+          const skipped = state === "skipped";
+
+          const borderColor = active
+            ? BLUE
+            : complete
+              ? "#86EFAC"
+              : failed
+                ? "#FCA5A5"
+                : BORDER;
+
+          const backgroundColor = active
+            ? "#F0F5FF"
+            : complete
+              ? "#F0FDF4"
+              : failed
+                ? "#FEF2F2"
+                : "#FAFAF9";
+
+          return (
+            <div key={stage.name} className="relative">
+              <div
+                className={`h-full rounded-xl border p-3 transition-all duration-500 ${
+                  active ? "animate-pulse" : ""
+                }`}
+                style={{
+                  borderColor,
+                  backgroundColor,
+                  boxShadow: active ? `0 0 0 2px ${BLUE}20` : "none",
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
+                    style={{
+                      color: failed
+                        ? "#991B1B"
+                        : complete
+                          ? "#166534"
+                          : PURPLE,
+                      backgroundColor: failed
+                        ? "#FEE2E2"
+                        : complete
+                          ? "#DCFCE7"
+                          : "#E5DBE6",
+                    }}
+                  >
+                    {complete
+                      ? "✓"
+                      : failed
+                        ? "!"
+                        : active
+                          ? "…"
+                          : skipped
+                            ? "—"
+                            : index + 1}
+                  </span>
+
+                  {active && (
+                    <span
+                      className="h-4 w-4 animate-spin rounded-full border-2"
+                      style={{
+                        borderColor: BLUE,
+                        borderTopColor: "transparent",
+                      }}
+                      aria-label="Stage in progress"
+                    />
+                  )}
+                </div>
+
+                <h3
+                  className="mt-3 text-sm font-semibold"
+                  style={{ color: PURPLE }}
+                >
+                  {stage.name}
+                </h3>
+
+                <p
+                  className="mt-1 min-h-10 text-xs leading-5"
+                  style={{ color: MUTED_TEXT }}
+                >
+                  {stage.detail}
+                </p>
+
+                <p
+                  className="mt-2 text-xs font-semibold"
+                  style={{
+                    color: failed
+                      ? "#991B1B"
+                      : complete
+                        ? "#166534"
+                        : active
+                          ? PURPLE
+                          : MUTED_TEXT,
+                  }}
+                >
+                  {getStageMessage(index, state)}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {loading && (
+        <p className="mt-4 text-xs" style={{ color: MUTED_TEXT }}>
+          The animation is a visual progress indicator, not a live backend
+          event stream. Actual evaluation and correction results appear when
+          the backend response arrives.
+        </p>
+      )}
+
+      {!loading && error && (
+        <p className="mt-4 text-sm" style={{ color: "#991B1B" }}>
+          The request did not complete successfully. Check the error message
+          below.
+        </p>
+      )}
+    </section>
+  );
+}
+
 // Must match the failure types in backend/app/services/evaluator.py.
 const FAILURE_LABELS = {
   unsupported_claim: "Unsupported claim",
@@ -380,25 +819,21 @@ function getVerdict(evaluation) {
 
 function EvaluationSummary({ evaluation, attempt, attemptCount }) {
   const verdict = getVerdict(evaluation);
-  const failureType = evaluation?.failure_type;
+
   const metrics = [
     {
       label: "Faithfulness",
-      value:
-        evaluation?.faithfulness ??
-        evaluation?.faithfulness_score,
+      value: evaluation?.faithfulness ?? evaluation?.faithfulness_score,
     },
     {
       label: "Answer relevance",
       value:
-        evaluation?.answer_relevance ??
-        evaluation?.answer_relevance_score,
+        evaluation?.answer_relevance ?? evaluation?.answer_relevance_score,
     },
     {
       label: "Context relevance",
       value:
-        evaluation?.context_relevance ??
-        evaluation?.context_relevance_score,
+        evaluation?.context_relevance ?? evaluation?.context_relevance_score,
     },
   ];
 
@@ -424,14 +859,19 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
         </span>
         <span
           className="inline-block rounded-full px-2 py-1 text-xs font-semibold"
-          style={{ color: verdict.color, backgroundColor: verdict.background }}
+          style={{
+            color: verdict.color,
+            backgroundColor: verdict.background,
+          }}
         >
           {verdict.label}
         </span>
-        {failureType && (
+
+        {evaluation?.failure_type && (
           <span className="text-sm" style={{ color: MUTED_TEXT }}>
             Failure type:{" "}
-            {FAILURE_LABELS[failureType] ?? failureType.replaceAll("_", " ")}
+            {FAILURE_LABELS[evaluation.failure_type] ??
+              evaluation.failure_type.replaceAll("_", " ")}
           </span>
         )}
       </div>
@@ -446,10 +886,7 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
             <p className="text-xs" style={{ color: MUTED_TEXT }}>
               {metric.label}
             </p>
-            <p
-              className="mt-2 text-2xl font-bold"
-              style={{ color: PURPLE }}
-            >
+            <p className="mt-2 text-2xl font-bold" style={{ color: PURPLE }}>
               {formatScore(metric.value)}
             </p>
           </div>
@@ -457,9 +894,8 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
       </div>
 
       <p className="mt-3 text-xs" style={{ color: MUTED_TEXT }}>
-        The answer status only says whether an answer was generated. The
-        evaluation verdict and scores are the backend evaluator&apos;s saved
-        result for the reported attempt and are not recomputed in the browser.
+        Scores and verdicts are the backend evaluator&apos;s saved results.
+        They are not recomputed in the browser.
       </p>
     </section>
   );
@@ -484,9 +920,7 @@ function EvidenceExplorer({ citations, retrieval }) {
             Retrieved passages and supporting citations
           </span>
         </span>
-        <span style={{ color: PURPLE }}>
-          {expanded ? "−" : "+"}
-        </span>
+        <span style={{ color: PURPLE }}>{expanded ? "−" : "+"}</span>
       </button>
 
       {expanded && (
@@ -509,10 +943,7 @@ function EvidenceExplorer({ citations, retrieval }) {
                   </p>
 
                   {item.similarity != null && (
-                    <span
-                      className="text-xs font-semibold"
-                      style={{ color: BLUE }}
-                    >
+                    <span className="text-xs font-semibold" style={{ color: BLUE }}>
                       Similarity: {formatScore(item.similarity)}
                     </span>
                   )}
@@ -522,9 +953,7 @@ function EvidenceExplorer({ citations, retrieval }) {
                   {item.page_number != null
                     ? `Page ${item.page_number}`
                     : "Page not provided"}
-                  {item.chunk_id != null
-                    ? ` · Chunk ${item.chunk_id}`
-                    : ""}
+                  {item.chunk_id != null ? ` · Chunk ${item.chunk_id}` : ""}
                 </p>
 
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
@@ -547,7 +976,7 @@ function EvidenceExplorer({ citations, retrieval }) {
                       ? citation.filename ||
                         citation.id ||
                         JSON.stringify(citation)
-                      : citation,
+                      : citation
                   )
                   .join(", ")}
               </p>
@@ -577,42 +1006,26 @@ function RetrievalDebugPanel({ retrieval, timings, attempts }) {
             Inspect retrieval details, timings, and attempts
           </span>
         </span>
-        <span style={{ color: PURPLE }}>
-          {expanded ? "−" : "+"}
-        </span>
+        <span style={{ color: PURPLE }}>{expanded ? "−" : "+"}</span>
       </button>
 
       {expanded && (
         <div className="mt-4 space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold">Retrieved chunks</h3>
-            <pre
-              className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
-              style={{ backgroundColor: "#F5F5F4" }}
-            >
-              {JSON.stringify(retrieval || [], null, 2)}
-            </pre>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold">Timings</h3>
-            <pre
-              className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
-              style={{ backgroundColor: "#F5F5F4" }}
-            >
-              {JSON.stringify(timings || {}, null, 2)}
-            </pre>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold">Query attempts</h3>
-            <pre
-              className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
-              style={{ backgroundColor: "#F5F5F4" }}
-            >
-              {JSON.stringify(attempts || [], null, 2)}
-            </pre>
-          </div>
+          {[
+            ["Retrieved chunks", retrieval || []],
+            ["Timings", timings || {}],
+            ["Query attempts", attempts || []],
+          ].map(([title, value]) => (
+            <div key={title}>
+              <h3 className="text-sm font-semibold">{title}</h3>
+              <pre
+                className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
+                style={{ backgroundColor: "#F5F5F4" }}
+              >
+                {JSON.stringify(value, null, 2)}
+              </pre>
+            </div>
+          ))}
         </div>
       )}
     </section>
@@ -626,7 +1039,7 @@ export default function Ask() {
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [result, setResult] = useState(null);
   const [queryId, setQueryId] = useState(
-    sessionStorage.getItem(LAST_QUERY_KEY),
+    sessionStorage.getItem(LAST_QUERY_KEY)
   );
   const [queryHistory, setQueryHistory] = useState(readHistory);
   const [loading, setLoading] = useState(false);
@@ -642,16 +1055,13 @@ export default function Ask() {
     async function loadDocuments() {
       try {
         const data = await getDocuments();
-
         if (!active) return;
 
         const list = Array.isArray(data) ? data : [];
         setDocuments(list);
         setSelectedDocuments(list.map((doc) => String(doc.id)));
       } catch (err) {
-        if (active) {
-          setError(err.message || "Failed to load documents.");
-        }
+        if (active) setError(err.message || "Failed to load documents.");
       } finally {
         if (active) setLoadingDocuments(false);
       }
@@ -674,7 +1084,6 @@ export default function Ask() {
 
       try {
         const data = await getQuery(queryId);
-
         if (!active) return;
 
         setResult(data);
@@ -718,19 +1127,17 @@ export default function Ask() {
     setSelectedDocuments((previous) =>
       previous.includes(id)
         ? previous.filter((item) => item !== id)
-        : [...previous, id],
+        : [...previous, id]
     );
   }
 
   function toggleAllDocuments() {
     const allSelected =
       documents.length > 0 &&
-      documents.every((doc) =>
-        selectedDocuments.includes(String(doc.id)),
-      );
+      documents.every((doc) => selectedDocuments.includes(String(doc.id)));
 
     setSelectedDocuments(
-      allSelected ? [] : documents.map((doc) => String(doc.id)),
+      allSelected ? [] : documents.map((doc) => String(doc.id))
     );
   }
 
@@ -756,14 +1163,12 @@ export default function Ask() {
     setShowDebug(false);
 
     try {
-      // Read Top-k from Evaluation settings.
       let topK = 5;
 
       try {
         const savedSettings = JSON.parse(
-          localStorage.getItem("relirag_evaluation_settings") || "{}"
+          localStorage.getItem(SETTINGS_KEY) || "{}"
         );
-
         const configuredTopK = Number(savedSettings.topK);
 
         if (
@@ -774,10 +1179,9 @@ export default function Ask() {
           topK = configuredTopK;
         }
       } catch {
-        // Keep the default Top-k value if settings are unavailable.
+        // Keep the default Top-k value.
       }
 
-      // Send Top-k and the selected mode along with the question.
       const data = await runQuery({
         question: submittedQuestion,
         documentIds: selectedDocuments,
@@ -822,14 +1226,15 @@ export default function Ask() {
   }
 
   const attempts = result?.attempts || [];
-  // final_answer and status describe the attempt named by final_attempt_number,
-  // which is not necessarily the last attempt.
+
   const reportedAttempt =
     attempts.find(
       (attempt) =>
         result?.final_attempt_number != null &&
-        attempt.attempt_number === result.final_attempt_number,
-    ) || {};
+        Number(attempt.attempt_number) ===
+          Number(result.final_attempt_number)
+    ) || attempts[attempts.length - 1] || {};
+
   const answer =
     result?.final_answer ??
     result?.answer ??
@@ -837,19 +1242,12 @@ export default function Ask() {
     "";
 
   const status = getStatus(result || {});
+
   const resultModeLabel =
-    QUERY_MODES.find((option) => option.value === result?.mode)?.label ??
-    null;
-  const retrieval =
-    reportedAttempt?.retrieval ??
-    result?.retrieval ??
-    [];
+    QUERY_MODES.find((option) => option.value === result?.mode)?.label ?? null;
 
-  const citations =
-    reportedAttempt?.citations ??
-    result?.citations ??
-    [];
-
+  const retrieval = reportedAttempt?.retrieval ?? result?.retrieval ?? [];
+  const citations = reportedAttempt?.citations ?? result?.citations ?? [];
   const evaluation = reportedAttempt?.evaluation ?? null;
 
   const timings =
@@ -880,6 +1278,8 @@ export default function Ask() {
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <main className="min-w-0 space-y-5">
+          <EvaluationSettingsPanel />
+
           <form
             onSubmit={handleSubmit}
             className="rounded-xl border bg-white p-5"
@@ -921,7 +1321,7 @@ export default function Ask() {
                 className="rounded-lg px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ backgroundColor: PURPLE }}
               >
-                {loading ? "Searching documents…" : "Ask RELI-RAG"}
+                {loading ? "Processing pipeline…" : "Ask RELI-RAG"}
               </button>
 
               <button
@@ -939,6 +1339,14 @@ export default function Ask() {
               </button>
             </div>
           </form>
+
+          {/* Correction pipeline appears directly below the question form. */}
+          <CorrectionPipeline
+            loading={loading}
+            result={result}
+            error={error}
+            mode={mode}
+          />
 
           <DocumentSelector
             documents={documents}
@@ -979,6 +1387,7 @@ export default function Ask() {
                   <h2 className="font-semibold" style={{ color: PURPLE }}>
                     Query Result
                   </h2>
+
                   <div className="flex flex-wrap items-center gap-2">
                     {resultModeLabel && (
                       <span
@@ -1006,9 +1415,9 @@ export default function Ask() {
                   >
                     <p className="font-bold">Insufficient Evidence</p>
                     <p className="mt-2 text-sm leading-6">
-                      The retrieved documents do not provide enough
-                      reliable evidence to answer this question confidently.
-                      Try selecting other documents or asking a more specific
+                      The retrieved documents do not provide enough reliable
+                      evidence to answer this question confidently. Try
+                      selecting other documents or asking a more specific
                       question.
                     </p>
                     {answer && (
@@ -1104,10 +1513,7 @@ export default function Ask() {
           )}
         </main>
 
-        <HistorySidebar
-          history={queryHistory}
-          onClear={clearHistory}
-        />
+        <HistorySidebar history={queryHistory} onClear={clearHistory} />
       </div>
     </div>
   );

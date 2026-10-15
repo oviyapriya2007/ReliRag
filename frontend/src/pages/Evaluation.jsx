@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getQuery, USE_MOCK } from "../../api/client";
@@ -11,52 +12,6 @@ const RED = "#991B1B";
 const cardStyle = {
   borderColor: BORDER,
   borderRadius: "16px",
-};
-
-const PIPELINE_STAGES = [
-  { key: "retrieve", label: "Retrieve" },
-  { key: "generate", label: "Generate" },
-  { key: "evaluate", label: "Evaluate" },
-  { key: "correct", label: "Correct" },
-  { key: "reevaluate", label: "Re-evaluate" },
-];
-
-const DEFAULT_SETTINGS = {
-  topK: 5,
-  similarityGate: 0.5,
-};
-
-const SCORE_METRICS = [
-  {
-    key: "faithfulness",
-    title: "Faithfulness",
-    color: "#EF4444",
-    description:
-      "Measures whether the answer is supported by retrieved evidence.",
-  },
-  {
-    key: "answer_relevance",
-    title: "Answer relevance",
-    color: "#22C55E",
-    description: "Measures how well the answer addresses the question.",
-  },
-  {
-    key: "context_relevance",
-    title: "Context relevance",
-    color: "#3B82F6",
-    description:
-      "Measures how relevant the retrieved evidence is to the question.",
-  },
-];
-
-// Must match EVALUATOR_ERROR in backend/app/services/evaluator.py.
-const EVALUATOR_ERROR = "evaluator_error";
-
-// Must match determine_failure_type in backend/app/services/evaluator.py.
-const FAILURE_TYPE_METRIC = {
-  unsupported_claim: "faithfulness",
-  missing_info: "answer_relevance",
-  irrelevant_retrieval: "context_relevance",
 };
 
 function formatLabel(value) {
@@ -78,105 +33,10 @@ function formatScore(value) {
   }
 
   const score = Number(value);
-  return `${Math.round(score <= 1 ? score * 100 : score)}%`;
+  return `${Math.round((score <= 1 ? score * 100 : score) * 10) / 10}%`;
 }
 
-function formatVerdict(verdict) {
-  return formatLabel(verdict || "Not evaluated").toUpperCase();
-}
-
-function verdictStyle(verdict) {
-  const value = String(verdict ?? "").toUpperCase();
-
-  if (["PASSED", "PASS", "SUPPORTED"].includes(value)) {
-    return { color: GREEN, backgroundColor: "#DCFCE7" };
-  }
-
-  if (["CORRECTED", "PARTIALLY_SUPPORTED"].includes(value)) {
-    return { color: "#92400E", backgroundColor: "#FEF3C7" };
-  }
-
-  if (
-    ["FAILED_AFTER_CORRECTION", "FAILED", "FAIL", "UNSUPPORTED"].includes(
-      value
-    )
-  ) {
-    return { color: RED, backgroundColor: "#FEE2E2" };
-  }
-
-  return { color: "#57534E", backgroundColor: "#F5F5F4" };
-}
-
-function evaluationVerdict(evaluation) {
-  if (!evaluation) return "NOT_EVALUATED";
-  if (evaluation.failure_type === EVALUATOR_ERROR) return "EVALUATOR_ERROR";
-  if (evaluation.passed === true) return "PASSED";
-  if (evaluation.passed === false) return "FAILED";
-  return "NOT_DETERMINED";
-}
-
-function attemptTitle(attempt) {
-  return `Attempt ${attempt?.attempt_number ?? "—"}`;
-}
-
-function isReportedAttempt(attempt, finalAttemptNumber) {
-  return (
-    finalAttemptNumber !== null &&
-    finalAttemptNumber !== undefined &&
-    attempt?.attempt_number === finalAttemptNumber
-  );
-}
-
-function Badge({ children, style }) {
-  return (
-    <span
-      className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-      style={style}
-    >
-      {children}
-    </span>
-  );
-}
-
-function ReportedBadge() {
-  return (
-    <Badge style={{ color: "#FFFFFF", backgroundColor: PURPLE }}>
-      Reported by query
-    </Badge>
-  );
-}
-
-function ScoreCard({ title, value, description, color, failureCause }) {
-  return (
-    <article
-      className="rounded-xl border bg-white p-4"
-      style={{ borderColor: color, borderRadius: "12px" }}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold" style={{ color }}>
-          {title}
-        </p>
-        {failureCause && (
-          <Badge style={{ color: RED, backgroundColor: "#FEE2E2" }}>
-            Failure cause
-          </Badge>
-        )}
-      </div>
-      <p className="mt-2 text-3xl font-bold" style={{ color }}>
-        {formatScore(value)}
-      </p>
-      {description && (
-        <p className="mt-2 text-xs leading-5 text-gray-500">
-          {description}
-        </p>
-      )}
-    </article>
-  );
-}
-
-function getAttemptScore(attempt, key) {
-  const value = attempt?.evaluation?.[key];
-
+function normalizedScore(value) {
   if (
     value === null ||
     value === undefined ||
@@ -190,7 +50,89 @@ function getAttemptScore(attempt, key) {
   return score <= 1 ? score * 100 : score;
 }
 
-function ScoreComparison({ title, metric, attempts, finalAttemptNumber }) {
+function verdictStyle(verdict) {
+  const value = String(verdict ?? "").toUpperCase();
+
+  if (
+    ["PASSED", "PASS", "SUPPORTED", "CORRECT", "ANSWERED"].includes(value)
+  ) {
+    return { color: GREEN, backgroundColor: "#DCFCE7" };
+  }
+
+  if (["CORRECTED"].includes(value)) {
+    return { color: "#92400E", backgroundColor: "#FEF3C7" };
+  }
+
+  if (
+    [
+      "FAILED_AFTER_CORRECTION",
+      "FAILED",
+      "FAIL",
+      "UNSUPPORTED",
+      "INSUFFICIENT_EVIDENCE",
+    ].includes(value)
+  ) {
+    return { color: RED, backgroundColor: "#FEE2E2" };
+  }
+
+  return { color: "#57534E", backgroundColor: "#F5F5F4" };
+}
+
+function ScoreCard({ title, value, description, color }) {
+  const score = normalizedScore(value);
+
+  return (
+    <article
+      className="rounded-xl border bg-white p-4"
+      style={{ borderColor: color, borderRadius: "12px" }}
+    >
+      <p className="text-sm font-semibold" style={{ color }}>
+        {title}
+      </p>
+
+      <p className="mt-2 text-3xl font-bold" style={{ color }}>
+        {formatScore(value)}
+      </p>
+
+      <div
+        className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100"
+        role="progressbar"
+        aria-label={title}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={score === null ? 0 : Math.max(0, Math.min(100, score))}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${score === null ? 0 : Math.max(0, Math.min(100, score))}%`,
+            backgroundColor: color,
+          }}
+        />
+      </div>
+
+      {description && (
+        <p className="mt-2 text-xs leading-5 text-gray-500">
+          {description}
+        </p>
+      )}
+    </article>
+  );
+}
+
+function getAttemptScore(attempt, key) {
+  return normalizedScore(attempt?.evaluation?.[key]);
+}
+
+function ScoreComparison({ title, metric, before, after }) {
+  const beforeScore = getAttemptScore(before, metric);
+  const afterScore = getAttemptScore(after, metric);
+
+  const difference =
+    beforeScore === null || afterScore === null
+      ? null
+      : Math.round((afterScore - beforeScore) * 10) / 10;
+
   return (
     <article
       className="rounded-xl border bg-white p-4"
@@ -198,68 +140,196 @@ function ScoreComparison({ title, metric, attempts, finalAttemptNumber }) {
     >
       <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
 
-      <ul className="mt-3 space-y-2">
-        {attempts.map((attempt, index) => {
-          const score = getAttemptScore(attempt, metric);
-          const previous =
-            index > 0 ? getAttemptScore(attempts[index - 1], metric) : null;
-          const difference =
-            score === null || previous === null
-              ? null
-              : Math.round((score - previous) * 10) / 10;
-          const reported = isReportedAttempt(attempt, finalAttemptNumber);
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="rounded-lg bg-red-50 p-3">
+          <p className="text-xs text-red-700">Before</p>
+          <p className="mt-1 text-xl font-bold text-red-800">
+            {beforeScore === null ? "N/A" : `${beforeScore.toFixed(1)}%`}
+          </p>
+        </div>
 
-          return (
-            <li
-              key={attempt?.attempt_number ?? index}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg p-3"
-              style={{
-                backgroundColor: reported ? "#F7F4FB" : "#F5F5F4",
-                border: `1px solid ${reported ? PURPLE : "transparent"}`,
-              }}
-            >
-              <span className="text-xs font-semibold text-gray-600">
-                {attemptTitle(attempt)}
-                {reported && (
-                  <span className="ml-1" style={{ color: PURPLE }}>
-                    · reported
-                  </span>
-                )}
-              </span>
+        <div className="rounded-lg bg-green-50 p-3">
+          <p className="text-xs text-green-700">After</p>
+          <p className="mt-1 text-xl font-bold text-green-800">
+            {afterScore === null ? "N/A" : `${afterScore.toFixed(1)}%`}
+          </p>
+        </div>
+      </div>
 
-              <span className="flex items-baseline gap-2">
-                <span
-                  className="text-xl font-bold"
-                  style={{ color: PURPLE }}
-                >
-                  {formatScore(attempt?.evaluation?.[metric])}
-                </span>
-                {difference !== null && (
-                  <span
-                    className="text-xs font-semibold"
-                    style={{
-                      color:
-                        difference > 0
-                          ? GREEN
-                          : difference < 0
-                            ? RED
-                            : "#57534E",
-                    }}
-                  >
-                    {difference > 0 ? "+" : ""}
-                    {difference} pp
-                  </span>
-                )}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+      {difference !== null && (
+        <p
+          className="mt-3 text-xs font-semibold"
+          style={{
+            color:
+              difference > 0
+                ? GREEN
+                : difference < 0
+                  ? RED
+                  : "#57534E",
+          }}
+        >
+          {difference > 0 ? "+" : ""}
+          {difference.toFixed(1)} percentage points
+        </p>
+      )}
     </article>
   );
 }
 
-function AnswerComparison({ before, after, finalAttemptNumber }) {
+function AttemptHistory({ attempts, finalAttempt }) {
+  return (
+    <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
+      <div>
+        <p
+          className="text-xs font-semibold uppercase tracking-wide"
+          style={{ color: BLUE }}
+        >
+          Evaluation history
+        </p>
+
+        <h2 className="mt-1 text-xl font-bold" style={{ color: PURPLE }}>
+          Attempts & Answers
+        </h2>
+
+        <p className="mt-2 text-sm text-gray-500">
+          Review each answer in chronological order, including its evaluation
+          scores and correction status.
+        </p>
+      </div>
+
+      {attempts.length > 0 ? (
+        <div className="mt-5 space-y-5">
+          {attempts.map((item, index) => {
+            const evaluation = item?.evaluation ?? {};
+            const isFinal =
+              finalAttempt != null &&
+              Number(item.attempt_number) ===
+                Number(finalAttempt.attempt_number);
+
+            const attemptNumber = item.attempt_number ?? index + 1;
+
+            const attemptScores = [
+              { label: "Faithfulness", value: evaluation.faithfulness },
+              {
+                label: "Answer relevance",
+                value: evaluation.answer_relevance,
+              },
+              {
+                label: "Context relevance",
+                value: evaluation.context_relevance,
+              },
+            ];
+
+            const status =
+              evaluation.passed === true
+                ? "PASSED"
+                : evaluation.passed === false
+                  ? "FAILED"
+                  : item.status ?? "NOT EVALUATED";
+
+            return (
+              <article
+                key={item.id ?? attemptNumber}
+                className="overflow-hidden rounded-xl border"
+                style={{
+                  borderColor: isFinal ? PURPLE : BORDER,
+                }}
+              >
+                <div
+                  className="flex flex-wrap items-center justify-between gap-3 p-4"
+                  style={{
+                    backgroundColor: isFinal ? "#F0EBFA" : "#FAF9FC",
+                  }}
+                >
+                  <div>
+                    <h3 className="font-bold" style={{ color: PURPLE }}>
+                      Attempt {attemptNumber}
+                      {isFinal ? " — Final attempt" : ""}
+                    </h3>
+
+                    {item.model && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Model: {item.model}
+                      </p>
+                    )}
+                  </div>
+
+                  <span
+                    className="rounded-full px-3 py-1 text-xs font-semibold"
+                    style={verdictStyle(status)}
+                  >
+                    {formatLabel(status).toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="p-4">
+                  <h4 className="text-sm font-semibold text-gray-700">
+                    Answer
+                  </h4>
+
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                    {item.answer || "No answer was returned for this attempt."}
+                  </p>
+
+                  {evaluation.feedback && (
+                    <div className="mt-4 rounded-lg bg-gray-50 p-3">
+                      <p className="text-xs font-semibold text-gray-600">
+                        Evaluator feedback
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                        {evaluation.feedback}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {attemptScores.map((score) => (
+                      <div
+                        key={score.label}
+                        className="rounded-lg border p-3"
+                        style={{ borderColor: BORDER }}
+                      >
+                        <p className="text-xs text-gray-500">
+                          {score.label}
+                        </p>
+                        <p
+                          className="mt-1 text-lg font-bold"
+                          style={{ color: PURPLE }}
+                        >
+                          {formatScore(score.value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {item.retrieval_query && (
+                    <details className="mt-4">
+                      <summary
+                        className="cursor-pointer text-sm font-semibold"
+                        style={{ color: PURPLE }}
+                      >
+                        View retrieval query
+                      </summary>
+                      <p className="mt-2 whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-sm leading-6 text-gray-600">
+                        {item.retrieval_query}
+                      </p>
+                    </details>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
+          No individual attempts were returned by the backend.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function AnswerComparison({ before, after }) {
   const beforeText = before?.answer ?? "";
   const afterText = after?.answer ?? "";
 
@@ -283,40 +353,26 @@ function AnswerComparison({ before, after, finalAttemptNumber }) {
   return (
     <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
       <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-        First / last attempt comparison
+        Before / After Comparison
       </h2>
+
       <p className="mt-2 text-sm text-gray-500">
-        Compare the first attempt with the last attempt returned by the
-        backend. Differences below are based on complete sentences. Every
-        attempt is listed in full under Attempt history.
+        Compare the first answer with the final correction attempt. Sentence
+        differences are based on exact text matching.
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <article className="rounded-xl border border-red-200 bg-red-50/40 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-bold text-red-800">
-              {attemptTitle(before)} (first)
-            </h3>
-            {isReportedAttempt(before, finalAttemptNumber) && (
-              <ReportedBadge />
-            )}
-          </div>
+          <h3 className="font-bold text-red-800">Before — Original answer</h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
-            {beforeText || "No answer was returned for this attempt."}
+            {beforeText || "No original answer was returned."}
           </p>
         </article>
 
         <article className="rounded-xl border border-green-200 bg-green-50/40 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-bold text-green-800">
-              {attemptTitle(after)} (last)
-            </h3>
-            {isReportedAttempt(after, finalAttemptNumber) && (
-              <ReportedBadge />
-            )}
-          </div>
+          <h3 className="font-bold text-green-800">After — Final answer</h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
-            {afterText || "No answer was returned for this attempt."}
+            {afterText || "No final answer was returned."}
           </p>
         </article>
       </div>
@@ -372,678 +428,197 @@ function AnswerComparison({ before, after, finalAttemptNumber }) {
   );
 }
 
-function PipelineStepper({ attempts }) {
-  const first = attempts[0];
-  const corrections = attempts.slice(1);
-  const firstEvaluation = first?.evaluation;
-  const evaluatedCorrections = corrections.filter(
-    (attempt) => attempt?.evaluation
-  );
+function BasicVsReliComparison({ query }) {
+  const comparison =
+    query?.comparison ??
+    query?.comparison_results ??
+    query?.comparison_data ??
+    null;
 
-  const stages = [
-    {
-      ...PIPELINE_STAGES[0],
-      done: Boolean(first?.retrieval?.length),
-      detail:
-        first?.timings?.retrieve_ms != null
-          ? `${first.timings.retrieve_ms} ms`
-          : "Timing unavailable",
-    },
-    {
-      ...PIPELINE_STAGES[1],
-      done: Boolean(first?.answer),
-      detail:
-        first?.timings?.generate_ms != null
-          ? `${first.timings.generate_ms} ms`
-          : "Timing unavailable",
-    },
-    {
-      ...PIPELINE_STAGES[2],
-      done: Boolean(firstEvaluation),
-      detail: firstEvaluation
-        ? formatVerdict(evaluationVerdict(firstEvaluation))
-        : "Evaluation unavailable",
-    },
-    {
-      ...PIPELINE_STAGES[3],
-      done: corrections.length > 0,
-      detail: corrections.length
-        ? corrections
-            .map(
-              (attempt) =>
-                `${attemptTitle(attempt)}: ${
-                  attempt?.strategy
-                    ? formatLabel(attempt.strategy)
-                    : "strategy not recorded"
-                }`
-            )
-            .join(" · ")
-        : "No separate correction attempt recorded",
-    },
-    {
-      ...PIPELINE_STAGES[4],
-      done: evaluatedCorrections.length > 0,
-      detail: corrections.length
-        ? corrections
-            .map(
-              (attempt) =>
-                `${attemptTitle(attempt)}: ${formatVerdict(
-                  evaluationVerdict(attempt?.evaluation)
-                )}`
-            )
-            .join(" · ")
-        : "Re-evaluation unavailable",
-    },
+  function readScore(metric, system) {
+    const value =
+      comparison?.[metric]?.[system] ??
+      comparison?.[system]?.[metric] ??
+      null;
+
+    return normalizedScore(value);
+  }
+
+  const metrics = [
+    { title: "Faithfulness", key: "faithfulness" },
+    { title: "Answer relevance", key: "answer_relevance" },
+    { title: "Context relevance", key: "context_relevance" },
   ];
 
   return (
     <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
       <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-        Correction pipeline
+        Basic RAG vs RELI-RAG
       </h2>
+
       <p className="mt-2 text-sm text-gray-500">
-        Stage indicators are inferred from the {attempts.length} attempt
-        {attempts.length === 1 ? "" : "s"} returned by the backend.
-        Unavailable timings are not estimated.
+        This section requires actual scores for both systems. An earlier
+        correction attempt is not the same as a Basic RAG result.
       </p>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {stages.map((stage, index) => (
-          <article
-            key={stage.key}
-            className="rounded-xl border p-3"
-            style={{
-              borderColor: stage.done ? "#86EFAC" : BORDER,
-              backgroundColor: stage.done ? "#F0FDF4" : "#FFFFFF",
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold"
-                style={{
-                  backgroundColor: stage.done ? "#DCFCE7" : "#F5F5F4",
-                  color: stage.done ? GREEN : "#57534E",
-                }}
-              >
-                {stage.done ? "✓" : index + 1}
-              </span>
-              <h3 className="text-sm font-bold text-gray-800">
-                {stage.label}
-              </h3>
-            </div>
-            <p className="mt-3 text-xs leading-5 text-gray-600">
-              {stage.detail}
-            </p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+        {metrics.map((metric) => {
+          const basic = readScore(metric.key, "basic_rag");
+          const reli = readScore(metric.key, "reli_rag");
 
-function CorrectionReason({ attempts }) {
-  const corrections = attempts.slice(1).map((attempt, index) => ({
-    attempt,
-    preceding: attempts[index],
-  }));
+          const difference =
+            basic === null || reli === null
+              ? null
+              : Math.round((reli - basic) * 10) / 10;
 
-  return (
-    <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
-      <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-        Correction reason
-      </h2>
-      <p className="mt-2 text-sm text-gray-500">
-        For each correction attempt, review the evaluation of the attempt
-        before it and the retrieval queries the two attempts used.
-      </p>
-
-      {corrections.length === 0 && (
-        <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Only one attempt is available. A separate correction attempt has
-          not been returned for this query.
-        </p>
-      )}
-
-      {corrections.map(({ attempt, preceding }, index) => (
-        <div
-          key={attempt?.attempt_number ?? index}
-          className="mt-4 rounded-xl border p-4"
-          style={{ borderColor: BORDER }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold" style={{ color: PURPLE }}>
-              {attemptTitle(preceding)} → {attemptTitle(attempt)}
-            </h3>
-            <Badge style={{ color: PURPLE, backgroundColor: "#E5DBE6" }}>
-              Strategy: {formatLabel(attempt?.strategy)}
-            </Badge>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Failure type ({attemptTitle(preceding)})
-              </p>
-              <p className="mt-2 text-sm font-semibold text-gray-800">
-                {preceding?.evaluation
-                  ? formatLabel(preceding.evaluation.failure_type)
-                  : "Not evaluated"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Evaluator feedback ({attemptTitle(preceding)})
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-                {preceding?.evaluation?.feedback ||
-                  "No evaluator feedback was returned."}
-              </p>
-            </div>
-
-            <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Retrieval query ({attemptTitle(preceding)})
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-                {preceding?.retrieval_query || "Not available"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Retrieval query ({attemptTitle(attempt)})
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-                {attempt?.retrieval_query || "Not available"}
-              </p>
-            </div>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function ClaimList({ claims, evidence }) {
-  const [selectedClaim, setSelectedClaim] = useState(null);
-
-  if (!Array.isArray(claims) || claims.length === 0) {
-    return (
-      <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
-        <p className="text-sm text-gray-600">
-          No individual claim analysis was returned for this attempt.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-4 space-y-3">
-      {claims.map((claim, index) => {
-        const isSelected = selectedClaim === index;
-        const hasChunk =
-          claim.evidence_chunk_id !== null &&
-          claim.evidence_chunk_id !== undefined;
-        const source = hasChunk
-          ? evidence.find((item) => item.chunk_id === claim.evidence_chunk_id)
-          : null;
-
-        return (
-          <article
-            key={index}
-            className="rounded-xl border p-4"
-            style={{
-              borderColor: isSelected ? PURPLE : BORDER,
-              backgroundColor: isSelected ? "#F7F4FB" : "#FFFFFF",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setSelectedClaim(isSelected ? null : index)}
-              className="flex w-full flex-wrap items-start justify-between gap-3 text-left"
-            >
-              <span className="flex-1 text-sm leading-6 text-gray-700">
-                <span className="mr-2 font-semibold" style={{ color: PURPLE }}>
-                  Claim {index + 1}
-                </span>
-                {claim.claim_text || "Claim text not available"}
-              </span>
-
-              <Badge style={verdictStyle(claim.verdict)}>
-                {formatVerdict(claim.verdict)}
-              </Badge>
-            </button>
-
-            {isSelected && (
-              <div className="mt-4 border-t pt-3" style={{ borderColor: BORDER }}>
-                {claim.evidence_quote || hasChunk ? (
-                  <>
-                    {claim.evidence_quote && (
-                      <p className="text-sm leading-6 text-gray-600">
-                        <strong style={{ color: PURPLE }}>Evidence: </strong>
-                        “{claim.evidence_quote}”
-                      </p>
-                    )}
-                    {hasChunk && (
-                      <p className="mt-2 text-xs text-gray-500">
-                        Chunk ID: {claim.evidence_chunk_id}
-                        {source &&
-                          ` · [${source.rank}] ${source.filename}${
-                            source.page_number != null
-                              ? `, page ${source.page_number}`
-                              : ""
-                          }`}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-500">
-                    No verified evidence in the retrieved passages.
-                  </p>
-                )}
-
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-xs font-semibold" style={{ color: PURPLE }}>
-                    View claim data
-                  </summary>
-                  <pre className="mt-2 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100">
-                    {JSON.stringify(claim, null, 2)}
-                  </pre>
-                </details>
-              </div>
-            )}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function EvidenceList({ evidence, citations }) {
-  return (
-    <>
-      {Array.isArray(evidence) && evidence.length > 0 ? (
-        <div className="mt-4 space-y-3">
-          {evidence.map((item, index) => (
+          return (
             <article
-              key={`${item.chunk_id ?? index}-${item.rank ?? index}`}
+              key={metric.key}
               className="rounded-xl border p-4"
               style={{ borderColor: BORDER }}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-800">
-                    {item.filename ?? `Evidence ${index + 1}`}
-                  </h3>
-                  {item.page_number != null && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Page {item.page_number}
-                    </p>
-                  )}
+              <h3 className="font-semibold text-gray-700">
+                {metric.title}
+              </h3>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-blue-50 p-3">
+                  <p className="text-xs text-blue-700">Basic RAG</p>
+                  <p className="mt-1 text-lg font-bold text-blue-800">
+                    {basic === null ? "N/A" : `${basic.toFixed(1)}%`}
+                  </p>
                 </div>
 
-                {typeof item.similarity === "number" && (
-                  <Badge style={{ color: PURPLE, backgroundColor: "#E5DBE6" }}>
-                    Similarity: {item.similarity.toFixed(3)}
-                  </Badge>
-                )}
+                <div className="rounded-lg p-3" style={{ backgroundColor: "#F0EBFA" }}>
+                  <p className="text-xs" style={{ color: PURPLE }}>
+                    RELI-RAG
+                  </p>
+                  <p className="mt-1 text-lg font-bold" style={{ color: PURPLE }}>
+                    {reli === null ? "N/A" : `${reli.toFixed(1)}%`}
+                  </p>
+                </div>
               </div>
 
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-600">
-                {item.content ?? "No evidence text was returned."}
-              </p>
-
-              <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
-                <span>Rank: {item.rank ?? "N/A"}</span>
-                <span>Chunk ID: {item.chunk_id ?? "N/A"}</span>
-              </div>
+              {difference === null ? (
+                <p className="mt-3 text-xs text-gray-500">
+                  Comparison scores were not returned by the backend.
+                </p>
+              ) : (
+                <p
+                  className="mt-3 text-xs font-semibold"
+                  style={{
+                    color:
+                      difference > 0
+                        ? GREEN
+                        : difference < 0
+                          ? RED
+                          : "#57534E",
+                  }}
+                >
+                  Difference: {difference > 0 ? "+" : ""}
+                  {difference.toFixed(1)} percentage points
+                </p>
+              )}
             </article>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
-          <p className="text-sm text-gray-600">
-            No retrieved evidence was returned for this attempt.
-          </p>
-        </div>
-      )}
-
-      {Array.isArray(citations) && citations.length > 0 && (
-        <div className="mt-5 border-t pt-4" style={{ borderColor: BORDER }}>
-          <h3 className="text-sm font-bold" style={{ color: PURPLE }}>
-            Answer citations
-          </h3>
-          <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-gray-600">
-            {citations.map((citation) => {
-              // Citation numbers are 1-based positions in this attempt's retrieval list.
-              const source = Array.isArray(evidence)
-                ? evidence[citation - 1]
-                : null;
-
-              return (
-                <li key={citation}>
-                  [{citation}]
-                  {source &&
-                    ` ${source.filename}${
-                      source.page_number != null
-                        ? `, page ${source.page_number}`
-                        : ""
-                    } · Chunk ID ${source.chunk_id}`}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </>
-  );
-}
-
-function AttemptCard({ attempt, finalAttemptNumber }) {
-  const evaluation = attempt?.evaluation ?? null;
-  const verdict = evaluationVerdict(evaluation);
-  const reported = isReportedAttempt(attempt, finalAttemptNumber);
-  const retrieval = attempt?.retrieval ?? [];
-  const claims = evaluation?.claims ?? [];
-  const timings = attempt?.timings ?? {};
-
-  const timingDetails = [
-    timings.retrieve_ms != null && `Retrieve ${timings.retrieve_ms} ms`,
-    timings.generate_ms != null && `Generate ${timings.generate_ms} ms`,
-    timings.evaluate_ms != null && `Evaluate ${timings.evaluate_ms} ms`,
-    timings.input_tokens != null && `${timings.input_tokens} input tokens`,
-    timings.output_tokens != null && `${timings.output_tokens} output tokens`,
-  ].filter(Boolean);
-
-  return (
-    <article
-      className="rounded-xl border p-4"
-      style={{
-        borderColor: reported ? PURPLE : BORDER,
-        backgroundColor: reported ? "#FCFBFE" : "#FFFFFF",
-      }}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-lg font-bold" style={{ color: PURPLE }}>
-          {attemptTitle(attempt)}
-        </h3>
-        <div className="flex flex-wrap gap-2">
-          {reported && <ReportedBadge />}
-          <Badge style={{ color: PURPLE, backgroundColor: "#E5DBE6" }}>
-            Strategy: {formatLabel(attempt?.strategy)}
-          </Badge>
-          <Badge style={verdictStyle(attempt?.status)}>
-            Status: {formatLabel(attempt?.status)}
-          </Badge>
-          <Badge style={verdictStyle(verdict)}>
-            Evaluation: {formatVerdict(verdict)}
-          </Badge>
-        </div>
+          );
+        })}
       </div>
-
-      <dl className="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-500 md:grid-cols-2">
-        <div>
-          <dt className="font-semibold uppercase tracking-wide">
-            Retrieval query
-          </dt>
-          <dd className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
-            {attempt?.retrieval_query || "Not available"}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-semibold uppercase tracking-wide">Model</dt>
-          <dd className="mt-1 text-sm text-gray-700">
-            {attempt?.model || "Not available"}
-          </dd>
-          {timingDetails.length > 0 && (
-            <dd className="mt-1">{timingDetails.join(" · ")}</dd>
-          )}
-        </div>
-      </dl>
-
-      <div className="mt-4 border-t pt-4" style={{ borderColor: BORDER }}>
-        <h4 className="text-sm font-bold" style={{ color: PURPLE }}>
-          Answer
-        </h4>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-700">
-          {attempt?.answer || "No answer was returned for this attempt."}
-        </p>
-      </div>
-
-      <div className="mt-4 border-t pt-4" style={{ borderColor: BORDER }}>
-        <h4 className="text-sm font-bold" style={{ color: PURPLE }}>
-          Attempt evaluation
-        </h4>
-
-        {evaluation ? (
-          <>
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-              {SCORE_METRICS.map((metric) => (
-                <ScoreCard
-                  key={metric.key}
-                  title={metric.title}
-                  value={evaluation[metric.key]}
-                  color={metric.color}
-                  failureCause={
-                    FAILURE_TYPE_METRIC[evaluation.failure_type] === metric.key
-                  }
-                />
-              ))}
-            </div>
-
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Failure type
-                </p>
-                <p className="mt-2 text-sm font-semibold text-gray-800">
-                  {evaluation.failure_type
-                    ? formatLabel(evaluation.failure_type)
-                    : "None reported"}
-                </p>
-              </div>
-
-              <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Evaluator feedback
-                </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-                  {evaluation.feedback || "No evaluator feedback was returned."}
-                </p>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="mt-3 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
-            <p className="text-sm text-gray-600">
-              This attempt was not evaluated, so no scores or feedback are
-              available.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {evaluation && (
-        <details className="mt-4 border-t pt-4" style={{ borderColor: BORDER }}>
-          <summary className="cursor-pointer text-sm font-bold" style={{ color: PURPLE }}>
-            Claims ({claims.length})
-          </summary>
-          <ClaimList claims={claims} evidence={retrieval} />
-        </details>
-      )}
-
-      <details className="mt-4 border-t pt-4" style={{ borderColor: BORDER }}>
-        <summary className="cursor-pointer text-sm font-bold" style={{ color: PURPLE }}>
-          Retrieved chunks ({retrieval.length})
-        </summary>
-        <EvidenceList evidence={retrieval} citations={attempt?.citations} />
-      </details>
-    </article>
-  );
-}
-
-function AttemptHistory({ attempts, finalAttemptNumber }) {
-  return (
-    <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
-      <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-        Attempt history ({attempts.length})
-      </h2>
-      <p className="mt-2 text-sm text-gray-500">
-        Every attempt returned by the backend, in the order received. Each
-        attempt shows its own evaluation; the attempt marked “Reported by
-        query” is the one the query’s final answer and status come from.
-      </p>
-
-      {attempts.length === 0 ? (
-        <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
-          <p className="text-sm text-gray-600">
-            No attempts were returned for this query.
-          </p>
-        </div>
-      ) : (
-        <div className="mt-4 space-y-4">
-          {attempts.map((attempt, index) => (
-            <AttemptCard
-              key={attempt?.attempt_number ?? index}
-              attempt={attempt}
-              finalAttemptNumber={finalAttemptNumber}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
 
-function SettingsPanel() {
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem("relirag_evaluation_settings");
-      const parsed = saved ? JSON.parse(saved) : {};
-      // Older versions saved an evaluator threshold that no longer exists.
-      delete parsed.evaluatorThreshold;
+function CorrectionReason({ first, latest }) {
+  const firstEvaluation = first?.evaluation;
+  const latestEvaluation = latest?.evaluation;
 
-      return {
-        ...DEFAULT_SETTINGS,
-        ...parsed,
-      };
-    } catch {
-      return DEFAULT_SETTINGS;
-    }
-  });
+  const failureType =
+    firstEvaluation?.failure_type ??
+    latestEvaluation?.failure_type ??
+    first?.failure_type ??
+    latest?.failure_type;
 
-  const updateSetting = (key, value) => {
-    setSettings((current) => {
-      const updated = { ...current, [key]: value };
-
-      try {
-        localStorage.setItem(
-          "relirag_evaluation_settings",
-          JSON.stringify(updated)
-        );
-      } catch {
-        // Keep the setting available for the current page session.
-      }
-
-      return updated;
-    });
-  };
-
-  const resetSettings = () => {
-    setSettings(DEFAULT_SETTINGS);
-
-    try {
-      localStorage.setItem(
-        "relirag_evaluation_settings",
-        JSON.stringify(DEFAULT_SETTINGS)
-      );
-    } catch {
-      // Retain the default state if storage is unavailable.
-    }
-  };
+  const feedback =
+    latestEvaluation?.feedback ??
+    firstEvaluation?.feedback ??
+    latest?.feedback ??
+    first?.feedback;
 
   return (
-    <details className="border bg-white p-5 shadow-sm" style={cardStyle}>
-      <summary
-        className="cursor-pointer text-xl font-bold"
-        style={{ color: PURPLE }}
-      >
-        Evaluation settings
-      </summary>
+    <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
+      <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
+        Correction Reason
+      </h2>
 
       <p className="mt-2 text-sm text-gray-500">
-        These preferences are saved in this browser. Top-k is sent with new
-        queries from Ask. The similarity gate is a frontend preference and
-        does not change backend processing. Pass/fail verdicts always come
-        from the backend evaluator.
+        Understand the evaluator's reported failure and how the retrieval
+        query changed across attempts.
       </p>
 
-      <div className="mt-5 space-y-5">
-        <label className="block">
-          <span className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-700">
-            Top-k retrieval
-            <span>{settings.topK}</span>
-          </span>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            step="1"
-            value={settings.topK}
-            onChange={(event) =>
-              updateSetting("topK", Number(event.target.value))
-            }
-            className="mt-3 w-full accent-purple-700"
-          />
-          <span className="text-xs text-gray-500">
-            Number of passages requested during retrieval for new queries.
-          </span>
-        </label>
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Failure type
+          </p>
+          <p className="mt-2 text-sm font-semibold text-gray-800">
+            {formatLabel(failureType)}
+          </p>
+        </div>
 
-        <label className="block">
-          <span className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-700">
-            Similarity gate
-            <span>{settings.similarityGate.toFixed(2)}</span>
-          </span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={settings.similarityGate}
-            onChange={(event) =>
-              updateSetting("similarityGate", Number(event.target.value))
-            }
-            className="mt-3 w-full accent-purple-700"
-          />
-          <span className="text-xs text-gray-500">
-            Preferred minimum similarity for inspecting retrieved evidence.
-            This setting does not filter backend retrieval.
-          </span>
-        </label>
+        <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Evaluator feedback
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+            {feedback || "No evaluator feedback was returned."}
+          </p>
+        </div>
 
-        <button
-          type="button"
-          onClick={resetSettings}
-          className="rounded-xl border px-4 py-2 text-sm font-semibold"
-          style={{ color: PURPLE, borderColor: BORDER }}
-        >
-          Reset settings
-        </button>
+        <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Original retrieval query
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+            {first?.retrieval_query || "Not available"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Final retrieval query
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+            {latest?.retrieval_query || "Not available"}
+          </p>
+        </div>
       </div>
-    </details>
+
+      {first && latest && first === latest && (
+        <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          Only one attempt is available. No separate correction attempt was
+          returned for this query.
+        </p>
+      )}
+    </section>
   );
 }
 
 function Evaluation() {
-  const { id } = useParams();
+  const { id, queryId: queryIdParam } = useParams();
+
+  const [savedQueryId] = useState(() => {
+    try {
+      return sessionStorage.getItem("relirag_last_query_id") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  const queryId = id || queryIdParam || savedQueryId;
 
   const [query, setQuery] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const queryId = id || sessionStorage.getItem("relirag_last_query_id");
+  const [selectedClaim, setSelectedClaim] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1052,6 +627,7 @@ function Evaluation() {
       setLoading(true);
       setError("");
       setQuery(null);
+      setSelectedClaim(null);
 
       if (!queryId) {
         setError(
@@ -1077,13 +653,23 @@ function Evaluation() {
         setQuery(response);
 
         const actualId = response?.query_id ?? queryId;
-        sessionStorage.setItem("relirag_last_query_id", String(actualId));
+
+        try {
+          sessionStorage.setItem(
+            "relirag_last_query_id",
+            String(actualId)
+          );
+        } catch {
+          // The URL query ID can still be used without session storage.
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err?.message || "Failed to load evaluation details.");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
@@ -1095,32 +681,128 @@ function Evaluation() {
   }, [queryId]);
 
   const attempts = Array.isArray(query?.attempts) ? query.attempts : [];
-  const firstAttempt = attempts[0] ?? null;
-  const lastAttempt = attempts.length > 1 ? attempts[attempts.length - 1] : null;
 
-  // The query's final answer and status come from final_attempt_number,
-  // which is not necessarily the last attempt.
-  const finalAttemptNumber = query?.final_attempt_number ?? null;
+  const initialAttempt = attempts[0] ?? null;
+
+  const finalAttemptNumber = query?.final_attempt_number;
+
   const finalAttempt =
-    attempts.find((attempt) =>
-      isReportedAttempt(attempt, finalAttemptNumber)
-    ) ?? null;
-  const finalEvaluation = finalAttempt?.evaluation ?? null;
-  const finalAttemptLabel = finalAttempt
-    ? attemptTitle(finalAttempt)
-    : "the reported attempt";
+    attempts.find(
+      (item) =>
+        finalAttemptNumber != null &&
+        Number(item.attempt_number) === Number(finalAttemptNumber)
+    ) ??
+    attempts[attempts.length - 1] ??
+    null;
 
-  const question = query?.question ?? "Question not available";
-  const answer = query?.final_answer ?? "";
+  const question =
+    query?.question ??
+    query?.original_question ??
+    "Question not available";
 
-  const failureMetric = FAILURE_TYPE_METRIC[finalEvaluation?.failure_type];
-  const scores = SCORE_METRICS.map((metric) => ({
-    ...metric,
-    value: finalEvaluation?.[metric.key],
-    failureCause: failureMetric === metric.key,
-  }));
+  const finalAnswer =
+    query?.final_answer ??
+    finalAttempt?.answer ??
+    query?.answer ??
+    "";
 
-  const finalVerdict = evaluationVerdict(finalEvaluation);
+  const evaluation = finalAttempt?.evaluation ?? query?.evaluation ?? {};
+
+  const claims = Array.isArray(evaluation?.claims)
+    ? evaluation.claims
+    : Array.isArray(evaluation?.claim_analysis)
+      ? evaluation.claim_analysis
+      : Array.isArray(finalAttempt?.claim_analysis)
+        ? finalAttempt.claim_analysis
+        : Array.isArray(query?.claim_analysis)
+          ? query.claim_analysis
+          : [];
+
+  const retrievalSource =
+    finalAttempt?.retrieval ??
+    finalAttempt?.retrieved_evidence ??
+    query?.retrieval ??
+    query?.retrieved_evidence ??
+    [];
+
+  const evidence = Array.isArray(retrievalSource)
+    ? retrievalSource
+    : Array.isArray(retrievalSource?.chunks)
+      ? retrievalSource.chunks
+      : Array.isArray(retrievalSource?.results)
+        ? retrievalSource.results
+        : [];
+
+  const citations = Array.isArray(finalAttempt?.citations)
+    ? finalAttempt.citations
+    : Array.isArray(query?.citations)
+      ? query.citations
+      : [];
+
+  const scores = [
+    {
+      title: "Faithfulness",
+      value: evaluation?.faithfulness,
+      color: "#EF4444",
+      description:
+        "Measures whether the answer is supported by retrieved evidence.",
+    },
+    {
+      title: "Answer relevance",
+      value: evaluation?.answer_relevance,
+      color: "#22C55E",
+      description: "Measures how well the answer addresses the question.",
+    },
+    {
+      title: "Context relevance",
+      value: evaluation?.context_relevance,
+      color: "#3B82F6",
+      description:
+        "Measures how relevant the retrieved evidence is to the question.",
+    },
+  ];
+
+  const evaluatorThreshold = (() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("relirag_evaluation_settings") || "{}"
+      );
+      const value = Number(saved.evaluatorThreshold ?? 0.7);
+
+      return Number.isFinite(value) && value >= 0 && value <= 1
+        ? value
+        : 0.7;
+    } catch {
+      return 0.7;
+    }
+  })();
+
+  const thresholdResults = scores.map((score) => {
+    const normalized = normalizedScore(score.value);
+
+    return {
+      ...score,
+      passed:
+        normalized === null
+          ? null
+          : normalized >= evaluatorThreshold * 100,
+    };
+  });
+
+  const availableThresholdResults = thresholdResults.filter(
+    (score) => score.passed !== null
+  );
+
+  const thresholdCheckPassed =
+    availableThresholdResults.length === scores.length &&
+    availableThresholdResults.every((score) => score.passed);
+
+  const finalVerdict =
+    evaluation?.passed === true
+      ? "PASSED"
+      : evaluation?.passed === false
+        ? "FAILED"
+        : finalAttempt?.status ?? query?.status ?? "NOT EVALUATED";
 
   return (
     <div className="space-y-6">
@@ -1128,16 +810,16 @@ function Evaluation() {
         <p className="text-sm font-medium" style={{ color: BLUE }}>
           RELI-RAG
         </p>
+
         <h1 className="mt-1 text-3xl font-bold" style={{ color: PURPLE }}>
           Evaluation Details
         </h1>
+
         <p className="mt-2 text-sm text-gray-500">
-          Review answer quality, correction attempts, individual claims,
-          and the evidence retrieved by the RAG pipeline.
+          Investigate every answer attempt, review the final evaluation, and
+          understand how the correction process changes answer quality.
         </p>
       </header>
-
-      <SettingsPanel />
 
       {loading && (
         <section className="border bg-white p-5" style={cardStyle}>
@@ -1155,7 +837,9 @@ function Evaluation() {
           <h2 className="font-bold text-red-800">
             Could not load evaluation
           </h2>
+
           <p className="mt-2 text-sm text-red-700">{error}</p>
+
           <Link
             to="/ask"
             className="mt-4 inline-block rounded-xl px-4 py-2 text-sm font-semibold text-white"
@@ -1168,190 +852,494 @@ function Evaluation() {
 
       {!loading && !error && query && (
         <>
-          <PipelineStepper attempts={attempts} />
-
+          {/* 1. ATTEMPTS AND ANSWERS */}
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <p
               className="text-xs font-semibold uppercase tracking-wide"
               style={{ color: BLUE }}
             >
-              Evaluated question
+              Question
             </p>
-            <h2 className="mt-2 text-xl font-bold leading-7" style={{ color: PURPLE }}>
+
+            <h2 className="mt-2 text-lg font-bold leading-7" style={{ color: PURPLE }}>
               {question}
             </h2>
 
-            <div className="mt-5 border-t pt-4" style={{ borderColor: BORDER }}>
-              <h3 className="text-sm font-bold" style={{ color: PURPLE }}>
-                Final answer
-                {finalAttempt && (
-                  <span className="ml-2 text-xs font-semibold text-gray-500">
-                    from {finalAttemptLabel}
-                  </span>
-                )}
-              </h3>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-700">
-                {answer || "No final answer was returned."}
-              </p>
-            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span
+                className="rounded-full px-3 py-1 text-xs font-semibold"
+                style={{ backgroundColor: "#E5DBE6", color: PURPLE }}
+              >
+                Query ID: {query?.query_id ?? queryId}
+              </span>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge style={{ color: PURPLE, backgroundColor: "#E5DBE6" }}>
+              <span
+                className="rounded-full px-3 py-1 text-xs font-semibold"
+                style={verdictStyle(query?.status)}
+              >
                 Query status: {formatLabel(query?.status)}
-              </Badge>
-              {query?.mode && (
-                <Badge style={{ color: PURPLE, backgroundColor: "#E5DBE6" }}>
-                  Mode: {formatLabel(query.mode)}
-                </Badge>
-              )}
-              <Badge style={{ color: PURPLE, backgroundColor: "#E5DBE6" }}>
-                Reported attempt:{" "}
-                {finalAttemptNumber ?? "Not available"} of {attempts.length}
-              </Badge>
-              {finalAttempt?.status && (
-                <Badge style={verdictStyle(finalAttempt.status)}>
-                  Attempt status: {formatLabel(finalAttempt.status)}
-                </Badge>
-              )}
+              </span>
+
+              <span
+                className="rounded-full px-3 py-1 text-xs font-semibold"
+                style={{ backgroundColor: "#F5F5F4", color: "#57534E" }}
+              >
+                {attempts.length} attempt{attempts.length === 1 ? "" : "s"}
+              </span>
             </div>
-          </section>
-
-          <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-                  Final evaluation
-                </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  {finalAttempt
-                    ? `Evaluation of ${finalAttemptLabel}, the attempt this query reports. The verdict and failure type are the backend evaluator's saved result and are not recomputed in the browser. Individual attempt evaluations are listed under Attempt history. N/A means the backend did not return that score.`
-                    : "The backend did not identify a reported attempt for this query, so no final evaluation is shown."}
-                </p>
-              </div>
-              {finalAttempt && (
-                <Badge style={verdictStyle(finalVerdict)}>
-                  {formatVerdict(finalVerdict)}
-                </Badge>
-              )}
-            </div>
-
-            {finalAttempt && !finalEvaluation && (
-              <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
-                <p className="text-sm text-gray-600">
-                  {finalAttemptLabel} was not evaluated, so no final scores or
-                  feedback are available.
-                </p>
-              </div>
-            )}
-
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-              {scores.map((score) => (
-                <ScoreCard
-                  key={score.key}
-                  title={score.title}
-                  value={score.value}
-                  color={score.color}
-                  description={score.description}
-                  failureCause={score.failureCause}
-                />
-              ))}
-            </div>
-
-            {finalEvaluation && (
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Failure type
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-gray-800">
-                    {finalEvaluation.failure_type
-                      ? formatLabel(finalEvaluation.failure_type)
-                      : "None reported"}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Evaluator feedback
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-                    {finalEvaluation.feedback ||
-                      "No evaluator feedback was returned."}
-                  </p>
-                </div>
-              </div>
-            )}
           </section>
 
           <AttemptHistory
             attempts={attempts}
-            finalAttemptNumber={finalAttemptNumber}
+            finalAttempt={finalAttempt}
           />
 
-          {firstAttempt && lastAttempt && (
-            <>
-              <AnswerComparison
-                before={firstAttempt}
-                after={lastAttempt}
-                finalAttemptNumber={finalAttemptNumber}
-              />
+          {/* 2. FINAL ANSWER AND SCORES */}
+          <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
+            <p
+              className="text-xs font-semibold uppercase tracking-wide"
+              style={{ color: BLUE }}
+            >
+              Final result
+            </p>
 
-              <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
-                <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-                  Score comparison
-                </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  Scores of every attempt, with the change from the previous
-                  attempt in percentage points (pp).
+            <h2 className="mt-1 text-xl font-bold" style={{ color: PURPLE }}>
+              Final Answer
+            </h2>
+
+            <div
+              className="mt-4 rounded-xl border p-4"
+              style={{ borderColor: BORDER }}
+            >
+              <p className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                {finalAnswer || "No final answer was returned."}
+              </p>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-500">
+                Backend verdict:
+              </span>
+
+              <span
+                className="rounded-full px-3 py-1 text-xs font-semibold"
+                style={verdictStyle(finalVerdict)}
+              >
+                {formatLabel(finalVerdict).toUpperCase()}
+              </span>
+
+              {finalAttempt?.attempt_number != null && (
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+                  Final attempt #{finalAttempt.attempt_number}
+                </span>
+              )}
+            </div>
+
+            <h3 className="mt-6 text-lg font-bold" style={{ color: PURPLE }}>
+              Final Evaluation Scores
+            </h3>
+
+            <p className="mt-1 text-sm text-gray-500">
+              Scores returned by the backend evaluator for the final attempt.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              {scores.map((score) => (
+                <ScoreCard
+                  key={score.title}
+                  title={score.title}
+                  value={score.value}
+                  color={score.color}
+                  description={score.description}
+                />
+              ))}
+            </div>
+
+            {evaluation?.feedback && (
+              <div
+                className="mt-4 rounded-xl border p-4"
+                style={{ borderColor: BORDER }}
+              >
+                <h3 className="font-semibold" style={{ color: PURPLE }}>
+                  Final evaluator feedback
+                </h3>
+
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                  {evaluation.feedback}
                 </p>
-                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-                  {SCORE_METRICS.map((metric) => (
+              </div>
+            )}
+          </section>
+
+          {/* 3. BEFORE / AFTER COMPARISON */}
+          {initialAttempt && finalAttempt && (
+            <>
+              {attempts.length > 1 ? (
+                <AnswerComparison
+                  before={initialAttempt}
+                  after={finalAttempt}
+                />
+              ) : (
+                <section
+                  className="border bg-white p-5 shadow-sm"
+                  style={cardStyle}
+                >
+                  <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
+                    Before / After Comparison
+                  </h2>
+
+                  <p className="mt-2 text-sm text-gray-500">
+                    Only one attempt was returned. A before-and-after
+                    correction comparison requires at least two attempts.
+                  </p>
+                </section>
+              )}
+
+              {attempts.length > 1 && (
+                <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
+                  <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
+                    Score Improvement
+                  </h2>
+
+                  <p className="mt-2 text-sm text-gray-500">
+                    Compare the original attempt's scores with the final
+                    attempt's scores. These are correction results, not
+                    Basic RAG versus RELI-RAG results.
+                  </p>
+
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                     <ScoreComparison
-                      key={metric.key}
-                      title={metric.title}
-                      metric={metric.key}
-                      attempts={attempts}
-                      finalAttemptNumber={finalAttemptNumber}
+                      title="Faithfulness"
+                      metric="faithfulness"
+                      before={initialAttempt}
+                      after={finalAttempt}
                     />
-                  ))}
-                </div>
-              </section>
+
+                    <ScoreComparison
+                      title="Answer relevance"
+                      metric="answer_relevance"
+                      before={initialAttempt}
+                      after={finalAttempt}
+                    />
+
+                    <ScoreComparison
+                      title="Context relevance"
+                      metric="context_relevance"
+                      before={initialAttempt}
+                      after={finalAttempt}
+                    />
+                  </div>
+                </section>
+              )}
             </>
           )}
 
-          <CorrectionReason attempts={attempts} />
+          {/* 4. DETAILED DIAGNOSTICS */}
+          <CorrectionReason
+            first={initialAttempt}
+            latest={finalAttempt}
+          />
 
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-              Claim analysis
+              Evaluator Threshold Check
             </h2>
+
             <p className="mt-2 text-sm text-gray-500">
-              Examine the claims of {finalAttemptLabel} and their evaluation
-              verdicts. Claims of other attempts are under Attempt history.
+              This frontend check compares the returned scores with your saved
+              threshold. It does not rerun the backend evaluator.
             </p>
 
-            <ClaimList
-              key={`${query.query_id}-${finalAttemptNumber}`}
-              claims={finalEvaluation?.claims}
-              evidence={finalAttempt?.retrieval ?? []}
-            />
+            <div
+              className="mt-4 rounded-xl border p-4"
+              style={{ borderColor: BORDER }}
+            >
+              <p className="text-sm text-gray-600">Required minimum score</p>
+
+              <p className="mt-1 text-2xl font-bold" style={{ color: PURPLE }}>
+                {Math.round(evaluatorThreshold * 100)}%
+              </p>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {thresholdResults.map((score) => (
+                <div
+                  key={score.title}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4"
+                  style={{ borderColor: BORDER }}
+                >
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      {score.title}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Score: {formatScore(score.value)}
+                    </p>
+                  </div>
+
+                  <span
+                    className="rounded-full px-3 py-1 text-xs font-semibold"
+                    style={
+                      score.passed === null
+                        ? { color: "#57534E", backgroundColor: "#F5F5F4" }
+                        : score.passed
+                          ? { color: GREEN, backgroundColor: "#DCFCE7" }
+                          : { color: RED, backgroundColor: "#FEE2E2" }
+                    }
+                  >
+                    {score.passed === null
+                      ? "NOT AVAILABLE"
+                      : score.passed
+                        ? "PASS"
+                        : "BELOW THRESHOLD"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="mt-4 rounded-xl p-4"
+              style={
+                availableThresholdResults.length !== scores.length
+                  ? { color: "#57534E", backgroundColor: "#F5F5F4" }
+                  : thresholdCheckPassed
+                    ? { color: GREEN, backgroundColor: "#DCFCE7" }
+                    : { color: RED, backgroundColor: "#FEE2E2" }
+              }
+            >
+              <p className="font-bold">
+                {availableThresholdResults.length !== scores.length
+                  ? "Threshold check incomplete"
+                  : thresholdCheckPassed
+                    ? "All three scores meet the frontend threshold"
+                    : "One or more scores are below the frontend threshold"}
+              </p>
+            </div>
           </section>
 
           <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
             <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
-              Retrieved evidence
+              Claim Analysis
             </h2>
+
             <p className="mt-2 text-sm text-gray-500">
-              Passages retrieved for {finalAttemptLabel} and supplied to the
-              answer-generation process. Passages of other attempts are under
-              Attempt history.
+              Expand a claim to inspect the evaluator's verdict and supporting
+              evidence.
             </p>
 
-            <EvidenceList
-              evidence={finalAttempt?.retrieval}
-              citations={finalAttempt?.citations}
-            />
+            {claims.length > 0 ? (
+              <div className="mt-4 space-y-3">
+                {claims.map((claim, index) => {
+                  const text =
+                    typeof claim === "string"
+                      ? claim
+                      : claim.claim_text ??
+                        claim.claim ??
+                        claim.text ??
+                        claim.statement ??
+                        `Claim ${index + 1}`;
+
+                  const verdict =
+                    typeof claim === "object" && claim !== null
+                      ? claim.verdict ?? claim.status ?? claim.result
+                      : null;
+
+                  const isSelected = selectedClaim === index;
+
+                  return (
+                    <article
+                      key={claim.id ?? index}
+                      className="rounded-xl border p-4"
+                      style={{
+                        borderColor: isSelected ? PURPLE : BORDER,
+                        backgroundColor: isSelected ? "#F7F4FB" : "#FFFFFF",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedClaim(isSelected ? null : index)
+                        }
+                        aria-expanded={isSelected}
+                        className="flex w-full flex-wrap items-start justify-between gap-3 text-left"
+                      >
+                        <span className="flex-1 text-sm leading-6 text-gray-700">
+                          <span
+                            className="mr-2 font-semibold"
+                            style={{ color: PURPLE }}
+                          >
+                            Claim {index + 1}
+                          </span>
+                          {text}
+                        </span>
+
+                        {verdict && (
+                          <span
+                            className="rounded-full px-3 py-1 text-xs font-semibold"
+                            style={verdictStyle(verdict)}
+                          >
+                            {formatLabel(verdict).toUpperCase()}
+                          </span>
+                        )}
+                      </button>
+
+                      {isSelected &&
+                        typeof claim === "object" &&
+                        claim !== null && (
+                          <div
+                            className="mt-4 border-t pt-3"
+                            style={{ borderColor: BORDER }}
+                          >
+                            {claim.evidence_chunk_id != null && (
+                              <p className="text-sm text-gray-600">
+                                <strong style={{ color: PURPLE }}>
+                                  Evidence chunk ID:{" "}
+                                </strong>
+                                {claim.evidence_chunk_id}
+                              </p>
+                            )}
+
+                            {claim.evidence_quote && (
+                              <p className="mt-2 text-sm leading-6 text-gray-600">
+                                <strong style={{ color: PURPLE }}>
+                                  Evidence quote:{" "}
+                                </strong>
+                                {claim.evidence_quote}
+                              </p>
+                            )}
+
+                            {claim.reason && (
+                              <p className="mt-2 text-sm leading-6 text-gray-600">
+                                <strong style={{ color: PURPLE }}>
+                                  Reason:{" "}
+                                </strong>
+                                {claim.reason}
+                              </p>
+                            )}
+
+                            <details className="mt-3">
+                              <summary
+                                className="cursor-pointer text-xs font-semibold"
+                                style={{ color: PURPLE }}
+                              >
+                                View claim data
+                              </summary>
+
+                              <pre className="mt-2 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100">
+                                {JSON.stringify(claim, null, 2)}
+                              </pre>
+                            </details>
+                          </div>
+                        )}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
+                <p className="text-sm text-gray-600">
+                  No individual claim analysis was returned for this attempt.
+                </p>
+              </div>
+            )}
           </section>
+
+          <section className="border bg-white p-5 shadow-sm" style={cardStyle}>
+            <h2 className="text-xl font-bold" style={{ color: PURPLE }}>
+              Retrieved Evidence
+            </h2>
+
+            <p className="mt-2 text-sm text-gray-500">
+              Passages retrieved by the RAG pipeline for the final attempt.
+            </p>
+
+            {evidence.length > 0 ? (
+              <div className="mt-4 space-y-3">
+                {evidence.map((item, index) => (
+                  <article
+                    key={item.chunk_id ?? item.id ?? index}
+                    className="rounded-xl border p-4"
+                    style={{ borderColor: BORDER }}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-800">
+                          {item.filename ??
+                            item.document_name ??
+                            item.source ??
+                            `Evidence ${index + 1}`}
+                        </h3>
+
+                        {item.page_number != null && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Page {item.page_number}
+                          </p>
+                        )}
+                      </div>
+
+                      {item.similarity != null &&
+                        Number.isFinite(Number(item.similarity)) && (
+                          <span
+                            className="rounded-full px-3 py-1 text-xs font-semibold"
+                            style={{
+                              color: PURPLE,
+                              backgroundColor: "#E5DBE6",
+                            }}
+                          >
+                            Similarity: {Number(item.similarity).toFixed(3)}
+                          </span>
+                        )}
+                    </div>
+
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                      {item.content ??
+                        item.text ??
+                        item.chunk_text ??
+                        "No evidence text was returned."}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
+                      <span>Rank: {item.rank ?? index + 1}</span>
+                      <span>Chunk ID: {item.chunk_id ?? "N/A"}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: "#F5F5F4" }}>
+                <p className="text-sm text-gray-600">
+                  No retrieved evidence was returned for this query.
+                </p>
+              </div>
+            )}
+
+            {citations.length > 0 && (
+              <div
+                className="mt-5 border-t pt-4"
+                style={{ borderColor: BORDER }}
+              >
+                <h3 className="text-sm font-bold" style={{ color: PURPLE }}>
+                  Answer Citations
+                </h3>
+
+                <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-gray-600">
+                  {citations.map((citation, index) => (
+                    <li key={index}>
+                      {typeof citation === "string" ||
+                      typeof citation === "number"
+                        ? String(citation)
+                        : citation.text ??
+                          citation.filename ??
+                          JSON.stringify(citation)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
+          {/* 5. BASIC RAG VS RELI-RAG */}
+          <BasicVsReliComparison query={query} />
 
           <footer className="flex flex-wrap gap-3">
             <Link
@@ -1368,8 +1356,16 @@ function Evaluation() {
               className="rounded-xl px-4 py-2 text-sm font-semibold text-white"
               style={{ backgroundColor: PURPLE }}
             >
-              Refresh evaluation
+              Refresh Evaluation
             </button>
+
+            <Link
+              to="/analytics"
+              className="rounded-xl border px-4 py-2 text-sm font-semibold"
+              style={{ color: PURPLE, borderColor: BORDER }}
+            >
+              View Analytics
+            </Link>
           </footer>
         </>
       )}
