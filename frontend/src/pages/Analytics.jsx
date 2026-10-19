@@ -285,7 +285,7 @@ function Analytics() {
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-600">
             Explore evaluation quality, correction outcomes, model latency,
-            and document usage across recorded RELI-RAG queries.
+            and document usage across recorded Attest queries.
           </p>
         </header>
 
@@ -344,7 +344,7 @@ function Analytics() {
             className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-bold tracking-wider"
             style={{ color: colors.blue }}
           >
-            RELI-RAG WORKSPACE
+            Attest WORKSPACE
           </span>
 
           <span className="rounded-full border border-white bg-white/70 px-3 py-1.5 text-xs font-semibold text-stone-600">
@@ -507,7 +507,7 @@ function Analytics() {
             Loading live analytics...
           </p>
           <p className="mt-2 text-sm text-stone-500">
-            Fetching statistics from the RELI-RAG backend.
+            Fetching statistics from the Attest backend.
           </p>
         </div>
       )}
@@ -605,7 +605,7 @@ function Analytics() {
 
           <Section
             title="Aggregate model quality"
-            description="Compare the average evaluation scores for Basic RAG and RELI-RAG. These are benchmark-level averages, not individual-query scores."
+            description="Compare the average evaluation scores for Basic RAG and Attest. These are benchmark-level averages, not individual-query scores."
             icon="◈"
           >
             <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -617,7 +617,7 @@ function Analytics() {
               />
 
               <ScorePanel
-                title="RELI-RAG"
+                title="Attest"
                 scores={reliScores}
                 accent={colors.pink}
                 tint="#FDF0F3"
@@ -639,7 +639,7 @@ function Analytics() {
                   tint: '#EDF3FA',
                 },
                 {
-                  name: 'RELI-RAG',
+                  name: 'Attest',
                   mode: reli,
                   accent: colors.pink,
                   tint: '#FDF0F3',
@@ -702,7 +702,7 @@ function Analytics() {
 
           <Section
             title="Correction performance"
-            description="Understand how often RELI-RAG triggers a correction and how many second attempts pass evaluation."
+            description="Understand how often Attest triggers a correction and how many second attempts pass evaluation."
             icon="↻"
           >
             <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -773,7 +773,7 @@ function Analytics() {
                 tint: '#EDF3FA',
               },
               {
-                name: 'RELI-RAG',
+                name: 'Attest',
                 latency: reliLatency,
                 accent: colors.pink,
                 tint: '#FDF0F3',
