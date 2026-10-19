@@ -8,6 +8,7 @@ import {
   DEMO_QUESTION,
   DEMO_TOPICS,
   coversAllDemoTopics,
+  isCorrectionDemoQuestion,
   missingDemoTopics,
   topicsCovered,
 } from './correctionDemo.js'
@@ -16,13 +17,18 @@ describe('Correction Demo topic coverage', () => {
   it('uses a fixed question that names all three topics', () => {
     assert.equal(
       DEMO_QUESTION,
-      'Explain network segmentation, MFA, and centralized logging, including one limitation of each.',
+      'According to the document, explain network segmentation, multi-factor authentication (MFA), and centralized logging. Describe how each improves security and identify one limitation of each measure. Support every point with evidence from the document.',
     )
     assert.deepEqual(topicsCovered(DEMO_QUESTION), [
       'segmentation',
       'mfa',
       'logging',
     ])
+    assert.equal(isCorrectionDemoQuestion(DEMO_QUESTION), true)
+    assert.equal(
+      isCorrectionDemoQuestion('Explain network segmentation only'),
+      false,
+    )
   })
 
   it('scripts Attempt 1 to miss MFA and logging', () => {

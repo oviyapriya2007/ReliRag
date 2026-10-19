@@ -7,6 +7,10 @@ import {
   getQuery,
   runQuery,
 } from "../../api/client";
+import {
+  buildCorrectionDemoPayload,
+  isCorrectionDemoQuestion,
+} from "../demo/correctionDemo";
 
 const PURPLE = "#55416F";
 const BLUE = "#738FBD";
@@ -30,11 +34,7 @@ const panelStyle = {
 };
 
 const QUERY_MODES = [
-  {
-    value: "basic",
-    label: "Basic",
-    description: "Single attempt",
-  },
+  { value: "basic", label: "Basic", description: "Single attempt" },
   {
     value: "reli",
     label: "RELI",
@@ -97,10 +97,16 @@ function EvaluationSettingsPanel() {
         className="flex w-full items-center justify-between gap-4 p-5 text-left transition hover:bg-[#F8F5FA]"
       >
         <span className="min-w-0">
-          <span className="block font-semibold" style={{ color: PURPLE }}>
+          <span
+            className="block font-semibold"
+            style={{ color: PURPLE }}
+          >
             Evaluation settings
           </span>
-          <span className="mt-1 block text-sm" style={{ color: MUTED_TEXT }}>
+          <span
+            className="mt-1 block text-sm"
+            style={{ color: MUTED_TEXT }}
+          >
             Configure retrieval preferences
           </span>
         </span>
@@ -123,7 +129,10 @@ function EvaluationSettingsPanel() {
           className="border-t bg-[#FCFAFD] p-5"
           style={{ borderColor: BORDER }}
         >
-          <p className="text-sm leading-6" style={{ color: MUTED_TEXT }}>
+          <p
+            className="text-sm leading-6"
+            style={{ color: MUTED_TEXT }}
+          >
             These preferences are saved in this browser. Top-k is sent with
             new queries. The similarity gate is a frontend preference and
             does not change backend processing. Pass/fail verdicts come from
@@ -160,7 +169,10 @@ function EvaluationSettingsPanel() {
                 className="mt-3 w-full accent-[#738FBD]"
               />
 
-              <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
+              <p
+                className="mt-2 text-xs"
+                style={{ color: MUTED_TEXT }}
+              >
                 Number of passages requested during retrieval.
               </p>
             </div>
@@ -192,12 +204,18 @@ function EvaluationSettingsPanel() {
                 step="0.05"
                 value={settings.similarityGate}
                 onChange={(event) =>
-                  updateSetting("similarityGate", Number(event.target.value))
+                  updateSetting(
+                    "similarityGate",
+                    Number(event.target.value)
+                  )
                 }
                 className="mt-3 w-full accent-[#DB88A4]"
               />
 
-              <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
+              <p
+                className="mt-2 text-xs"
+                style={{ color: MUTED_TEXT }}
+              >
                 Preferred minimum similarity when inspecting evidence.
               </p>
             </div>
@@ -254,9 +272,7 @@ function getStatus(data) {
     data?.status ??
     attempt?.status ??
     "UNKNOWN"
-  )
-    .toString()
-    .toUpperCase();
+  ).toString().toUpperCase();
 }
 
 function formatScore(value) {
@@ -365,7 +381,10 @@ function HistorySidebar({ history, onClear }) {
                 <StatusBadge status={item.status} />
               </div>
 
-              <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
+              <p
+                className="mt-2 text-xs"
+                style={{ color: MUTED_TEXT }}
+              >
                 {item.timestamp
                   ? new Date(item.timestamp).toLocaleString()
                   : "Recent query"}
@@ -393,7 +412,10 @@ function HistorySidebar({ history, onClear }) {
 function ModeSelector({ mode, onChange, disabled }) {
   return (
     <fieldset className="mt-4" disabled={disabled}>
-      <legend className="text-sm font-semibold" style={{ color: PURPLE }}>
+      <legend
+        className="text-sm font-semibold"
+        style={{ color: PURPLE }}
+      >
         Mode
       </legend>
 
@@ -432,6 +454,7 @@ function ModeSelector({ mode, onChange, disabled }) {
                   style={{ color: PURPLE }}
                 >
                   {option.label}
+
                   {option.value === "reli" && (
                     <span
                       className="ml-2 rounded-full px-2 py-0.5 text-[10px]"
@@ -444,6 +467,7 @@ function ModeSelector({ mode, onChange, disabled }) {
                     </span>
                   )}
                 </span>
+
                 <span
                   className="mt-1 block text-xs"
                   style={{ color: MUTED_TEXT }}
@@ -468,7 +492,9 @@ function DocumentSelector({
 }) {
   const allSelected =
     documents.length > 0 &&
-    documents.every((doc) => selectedDocuments.includes(String(doc.id)));
+    documents.every((doc) =>
+      selectedDocuments.includes(String(doc.id))
+    );
 
   return (
     <section
@@ -546,6 +572,7 @@ function DocumentSelector({
                   >
                     {doc.name || doc.filename || `Document ${id}`}
                   </span>
+
                   <span
                     className="mt-1 block text-xs"
                     style={{ color: MUTED_TEXT }}
@@ -569,7 +596,10 @@ function DocumentSelector({
 const PIPELINE_STAGE_MS = 2200;
 
 function prefersReducedMotion() {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
+  if (typeof window === "undefined" || !window.matchMedia) {
+    return false;
+  }
+
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
@@ -625,6 +655,7 @@ function IllustrativePipelineProgress({ reducedMotion }) {
               ? "Reduced motion: static wait indicator"
               : `Stage ${focusStage + 1} of ${stageCount} (illustrative)`}
           </span>
+
           <span className="font-semibold" style={{ color: PURPLE }}>
             {Math.round(illustrativeProgress)}%
           </span>
@@ -652,26 +683,32 @@ function IllustrativePipelineProgress({ reducedMotion }) {
         loading
         reducedMotion={reducedMotion}
         activeStage={focusStage}
-        getStageState={(index) => {
-          if (index < focusStage) return "elapsed";
-          if (index === focusStage) return "active";
-          return "pending";
-        }}
+        getStageState={(index) =>
+          index < focusStage
+            ? "elapsed"
+            : index === focusStage
+              ? "active"
+              : "pending"
+        }
         getStageMessage={(_index, state) => {
           if (state === "active") {
             return reducedMotion
               ? "Waiting for backend response…"
               : "Illustrative focus…";
           }
+
           if (state === "elapsed") return "Elapsed (illustrative)";
           return "Waiting";
         }}
       />
 
-      <p className="mt-4 text-xs leading-5" style={{ color: MUTED_TEXT }}>
-        This animation is a visual aid while waiting for the backend. It does
-        not report live stage completion. Actual evaluation and correction
-        results appear when the response arrives.
+      <p
+        className="mt-4 text-xs leading-5"
+        style={{ color: MUTED_TEXT }}
+      >
+        This animation is a visual aid while waiting for the backend. It
+        does not report live stage completion. Actual evaluation and
+        correction results appear when the response arrives.
       </p>
     </>
   );
@@ -845,7 +882,6 @@ function CorrectionPipeline({ loading, result, error, mode }) {
   function getResultStageState(index) {
     if (error) return index === 0 ? "failed" : "pending";
     if (!result) return "pending";
-
     if (index === 0) return "complete";
 
     if (index === 1) {
@@ -865,8 +901,14 @@ function CorrectionPipeline({ loading, result, error, mode }) {
     }
 
     if (index === 4) {
-      if (mode === "basic" || result.mode === "basic") return "skipped";
-      if (!correctionAttempted) return "skipped";
+      if (
+        mode === "basic" ||
+        result.mode === "basic" ||
+        !correctionAttempted
+      ) {
+        return "skipped";
+      }
+
       if (!evaluated) return "unknown";
       return evaluation?.passed === false ? "failed" : "complete";
     }
@@ -885,8 +927,10 @@ function CorrectionPipeline({ loading, result, error, mode }) {
           ? "Evaluation passed"
           : "Evaluation completed";
       }
+
       if (index === 3) return "Retry found in result";
       if (index === 4) return "Final evaluation received";
+
       return "Completed";
     }
 
@@ -942,8 +986,8 @@ function CorrectionPipeline({ loading, result, error, mode }) {
 
       {error && (
         <p className="mt-4 text-sm" style={{ color: "#991B1B" }}>
-          The request did not complete successfully. Check the error message
-          below.
+          The request did not complete successfully. Check the error
+          message below.
         </p>
       )}
     </section>
@@ -979,11 +1023,19 @@ function getVerdict(evaluation) {
   }
 
   if (evaluation.passed === true) {
-    return { label: "PASSED", color: "#166534", background: "#E4F4EA" };
+    return {
+      label: "PASSED",
+      color: "#166534",
+      background: "#E4F4EA",
+    };
   }
 
   if (evaluation.passed === false) {
-    return { label: "FAILED", color: "#991B1B", background: "#FCE8EC" };
+    return {
+      label: "FAILED",
+      color: "#991B1B",
+      background: "#FCE8EC",
+    };
   }
 
   return {
@@ -999,21 +1051,24 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
   const metrics = [
     {
       label: "Faithfulness",
-      value: evaluation?.faithfulness ?? evaluation?.faithfulness_score,
+      value:
+        evaluation?.faithfulness ?? evaluation?.faithfulness_score,
       background: SOFT_BLUE,
       accent: BLUE,
     },
     {
       label: "Answer relevance",
       value:
-        evaluation?.answer_relevance ?? evaluation?.answer_relevance_score,
+        evaluation?.answer_relevance ??
+        evaluation?.answer_relevance_score,
       background: PALE_PINK,
       accent: ROSE,
     },
     {
       label: "Context relevance",
       value:
-        evaluation?.context_relevance ?? evaluation?.context_relevance_score,
+        evaluation?.context_relevance ??
+        evaluation?.context_relevance_score,
       background: LAVENDER,
       accent: PURPLE,
     },
@@ -1028,6 +1083,7 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
         <h2 className="font-semibold" style={{ color: PURPLE }}>
           Evaluation Summary
         </h2>
+
         <span className="text-xs" style={{ color: MUTED_TEXT }}>
           {attempt?.attempt_number
             ? `Reported attempt ${attempt.attempt_number} of ${attemptCount}`
@@ -1042,6 +1098,7 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
         <span className="text-sm font-semibold" style={{ color: DARK_TEXT }}>
           Evaluation verdict:
         </span>
+
         <span
           className="inline-block rounded-full px-2 py-1 text-xs font-semibold"
           style={{
@@ -1076,7 +1133,10 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
             <p className="text-xs font-medium" style={{ color: MUTED_TEXT }}>
               {metric.label}
             </p>
-            <p className="mt-2 text-2xl font-bold" style={{ color: PURPLE }}>
+            <p
+              className="mt-2 text-2xl font-bold"
+              style={{ color: PURPLE }}
+            >
               {formatScore(metric.value)}
             </p>
           </div>
@@ -1084,8 +1144,122 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
       </div>
 
       <p className="mt-3 text-xs" style={{ color: MUTED_TEXT }}>
-        Scores and verdicts are the backend evaluator&apos;s saved results.
-        They are not recomputed in the browser.
+        {evaluation?.feedback?.startsWith("[DEMO")
+          ? "Scripted / demo scores — not a real Claude evaluation."
+          : "Scores and verdicts are the backend evaluator's saved results. They are not recomputed in the browser."}
+      </p>
+    </section>
+  );
+}
+
+function ScriptedCorrectionTrail({ result }) {
+  const attempt1 = result?.attempts?.[0];
+  const attempt2 = result?.attempts?.[1];
+
+  if (!attempt1 || !attempt2) return null;
+
+  return (
+    <section
+      className="rounded-xl border bg-white p-5"
+      style={panelStyle}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold" style={{ color: PURPLE }}>
+          Correction trail
+        </h2>
+
+        <span
+          className="rounded-full px-3 py-1 text-xs font-bold"
+          style={{
+            color: "#92400E",
+            backgroundColor: "#FEF3C7",
+          }}
+        >
+          DEMO / SIMULATED
+        </span>
+      </div>
+
+      <p className="mt-2 text-sm" style={{ color: MUTED_TEXT }}>
+        Scripted walkthrough for this question only. Not saved to the
+        database and not produced by Claude.
+      </p>
+
+      <ol className="mt-4 space-y-3">
+        <li
+          className="rounded-lg border p-4"
+          style={{ borderColor: "#FCA5A5" }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-gray-800">
+              Attempt 1
+            </p>
+
+            <span
+              className="rounded-full px-2 py-1 text-xs font-semibold"
+              style={{
+                color: "#991B1B",
+                backgroundColor: "#FEE2E2",
+              }}
+            >
+              FAILED · missing_info
+            </span>
+          </div>
+
+          <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+            {attempt1.answer}
+          </pre>
+        </li>
+
+        <li
+          className="rounded-lg border p-4"
+          style={{ borderColor: BLUE }}
+        >
+          <p className="text-sm font-semibold text-gray-800">
+            Correction query (rewrite)
+          </p>
+
+          <pre
+            className="mt-3 whitespace-pre-wrap rounded-lg p-3 text-sm leading-6 text-gray-700"
+            style={{ backgroundColor: "#F0F5FF" }}
+          >
+            {result.correction_query || "No correction query provided."}
+          </pre>
+        </li>
+
+        <li
+          className="rounded-lg border p-4"
+          style={{ borderColor: "#86EFAC" }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-gray-800">
+              Attempt 2
+            </p>
+
+            <span
+              className="rounded-full px-2 py-1 text-xs font-semibold"
+              style={{
+                color: "#166534",
+                backgroundColor: "#DCFCE7",
+              }}
+            >
+              PASSED
+            </span>
+          </div>
+
+          <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+            {attempt2.answer}
+          </pre>
+        </li>
+      </ol>
+
+      <p className="mt-3 text-xs" style={{ color: MUTED_TEXT }}>
+        Full labelled view also available on{" "}
+        <Link
+          to="/correction-demo"
+          className="font-semibold underline"
+        >
+          Correction Demo
+        </Link>.
       </p>
     </section>
   );
@@ -1127,8 +1301,11 @@ function EvidenceExplorer({ citations, retrieval }) {
                 className="rounded-xl border p-4"
                 style={{
                   borderColor: BORDER,
-                  backgroundColor: index % 2 === 0 ? "#FCFAFD" : "#F8F6FA",
-                  borderLeft: `3px solid ${index % 2 === 0 ? BLUE : ROSE}`,
+                  backgroundColor:
+                    index % 2 === 0 ? "#FCFAFD" : "#F8F6FA",
+                  borderLeft: `3px solid ${
+                    index % 2 === 0 ? BLUE : ROSE
+                  }`,
                 }}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1137,24 +1314,34 @@ function EvidenceExplorer({ citations, retrieval }) {
                     style={{ color: DARK_TEXT }}
                   >
                     [{item.rank ?? index + 1}]{" "}
-                    {item.filename || item.document_name || "Source document"}
+                    {item.filename ||
+                      item.document_name ||
+                      "Source document"}
                   </p>
 
                   {item.similarity != null && (
                     <span
                       className="rounded-full px-2 py-1 text-xs font-semibold"
-                      style={{ color: PURPLE, backgroundColor: SOFT_BLUE }}
+                      style={{
+                        color: PURPLE,
+                        backgroundColor: SOFT_BLUE,
+                      }}
                     >
                       Similarity: {formatScore(item.similarity)}
                     </span>
                   )}
                 </div>
 
-                <p className="mt-1 text-xs" style={{ color: MUTED_TEXT }}>
+                <p
+                  className="mt-1 text-xs"
+                  style={{ color: MUTED_TEXT }}
+                >
                   {item.page_number != null
                     ? `Page ${item.page_number}`
                     : "Page not provided"}
-                  {item.chunk_id != null ? ` · Chunk ${item.chunk_id}` : ""}
+                  {item.chunk_id != null
+                    ? ` · Chunk ${item.chunk_id}`
+                    : ""}
                 </p>
 
                 <p
@@ -1174,9 +1361,13 @@ function EvidenceExplorer({ citations, retrieval }) {
                   borderColor: "#F0D7E1",
                 }}
               >
-                <p className="text-sm font-semibold" style={{ color: PURPLE }}>
+                <p
+                  className="text-sm font-semibold"
+                  style={{ color: PURPLE }}
+                >
                   Answer citations
                 </p>
+
                 <p className="mt-1 text-sm" style={{ color: MUTED_TEXT }}>
                   {citationList
                     .map((citation) =>
@@ -1224,6 +1415,7 @@ function RetrievalDebugPanel({ retrieval, timings, attempts }) {
             <h3 className="text-sm font-semibold" style={{ color: PURPLE }}>
               {title}
             </h3>
+
             <pre
               className="mt-2 overflow-x-auto rounded-lg border p-3 text-xs"
               style={{
@@ -1251,6 +1443,7 @@ export default function Ask() {
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [result, setResult] = useState(null);
+
   const [queryId, setQueryId] = useState(() => {
     try {
       return sessionStorage.getItem(LAST_QUERY_KEY);
@@ -1258,6 +1451,7 @@ export default function Ask() {
       return null;
     }
   });
+
   const [queryHistory, setQueryHistory] = useState(readHistory);
   const [loading, setLoading] = useState(false);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
@@ -1272,13 +1466,17 @@ export default function Ask() {
     async function loadDocuments() {
       try {
         const data = await getDocuments();
+
         if (!active) return;
 
         const list = Array.isArray(data) ? data : [];
+
         setDocuments(list);
         setSelectedDocuments(list.map((doc) => String(doc.id)));
       } catch (err) {
-        if (active) setError(err.message || "Failed to load documents.");
+        if (active) {
+          setError(err.message || "Failed to load documents.");
+        }
       } finally {
         if (active) setLoadingDocuments(false);
       }
@@ -1301,10 +1499,14 @@ export default function Ask() {
 
       try {
         const data = await getQuery(queryId);
+
         if (!active) return;
 
         setResult(data);
-        if (data.question) setQuestion(data.question);
+
+        if (data.question) {
+          setQuestion(data.question);
+        }
       } catch {
         // The last query may no longer exist on the backend.
       } finally {
@@ -1336,6 +1538,7 @@ export default function Ask() {
       ].slice(0, MAX_HISTORY);
 
       saveHistory(updated);
+
       return updated;
     });
   }
@@ -1351,7 +1554,9 @@ export default function Ask() {
   function toggleAllDocuments() {
     const allSelected =
       documents.length > 0 &&
-      documents.every((doc) => selectedDocuments.includes(String(doc.id)));
+      documents.every((doc) =>
+        selectedDocuments.includes(String(doc.id))
+      );
 
     setSelectedDocuments(
       allSelected ? [] : documents.map((doc) => String(doc.id))
@@ -1383,12 +1588,31 @@ export default function Ask() {
     setShowDebug(false);
 
     try {
+      // Exact-match demo override only. Other questions use live RELI-RAG.
+      if (isCorrectionDemoQuestion(submittedQuestion)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 9000));
+
+        const data = buildCorrectionDemoPayload();
+
+        setResult(data);
+        setQueryId(null);
+
+        recordHistory(
+          `demo-${Date.now()}`,
+          submittedQuestion,
+          data
+        );
+
+        return;
+      }
+
       let topK = 5;
 
       try {
         const savedSettings = JSON.parse(
           localStorage.getItem(SETTINGS_KEY) || "{}"
         );
+
         const configuredTopK = Number(savedSettings.topK);
 
         if (
@@ -1402,7 +1626,6 @@ export default function Ask() {
         // Keep the default Top-k value.
       }
 
-      // Preserve the existing API client and request parameters.
       const data = await runQuery({
         question: submittedQuestion,
         documentIds: selectedDocuments,
@@ -1437,6 +1660,7 @@ export default function Ask() {
           ].slice(0, MAX_HISTORY);
 
           saveHistory(updated);
+
           return updated;
         });
       }
@@ -1452,7 +1676,9 @@ export default function Ask() {
     saveHistory([]);
   }
 
-  const attempts = Array.isArray(result?.attempts) ? result.attempts : [];
+  const attempts = Array.isArray(result?.attempts)
+    ? result.attempts
+    : [];
 
   const reportedAttempt =
     attempts.find(
@@ -1460,7 +1686,9 @@ export default function Ask() {
         result?.final_attempt_number != null &&
         Number(attempt.attempt_number) ===
           Number(result.final_attempt_number)
-    ) || attempts[attempts.length - 1] || {};
+    ) ||
+    attempts[attempts.length - 1] ||
+    {};
 
   const answer =
     result?.final_answer ??
@@ -1471,10 +1699,15 @@ export default function Ask() {
   const status = getStatus(result || {});
 
   const resultModeLabel =
-    QUERY_MODES.find((option) => option.value === result?.mode)?.label ?? null;
+    QUERY_MODES.find((option) => option.value === result?.mode)?.label ??
+    null;
 
-  const retrieval = reportedAttempt?.retrieval ?? result?.retrieval ?? [];
-  const citations = reportedAttempt?.citations ?? result?.citations ?? [];
+  const retrieval =
+    reportedAttempt?.retrieval ?? result?.retrieval ?? [];
+
+  const citations =
+    reportedAttempt?.citations ?? result?.citations ?? [];
+
   const evaluation = reportedAttempt?.evaluation ?? null;
 
   const timings =
@@ -1509,12 +1742,14 @@ export default function Ask() {
         >
           RELI-RAG · Retrieval Augmented Generation
         </p>
+
         <h1
           className="mt-2 text-2xl font-bold sm:text-3xl"
           style={{ color: PURPLE }}
         >
           Ask a Question
         </h1>
+
         <p
           className="mt-2 max-w-2xl text-sm leading-6"
           style={{ color: MUTED_TEXT }}
@@ -1530,15 +1765,23 @@ export default function Ask() {
           >
             Document-grounded answers
           </span>
+
           <span
             className="rounded-full px-3 py-1 text-xs font-medium"
-            style={{ backgroundColor: "#F7DCE6", color: "#884C67" }}
+            style={{
+              backgroundColor: "#F7DCE6",
+              color: "#884C67",
+            }}
           >
             Evaluation insights
           </span>
+
           <span
             className="rounded-full px-3 py-1 text-xs font-medium"
-            style={{ backgroundColor: "#DCE8F6", color: "#3F5F91" }}
+            style={{
+              backgroundColor: "#DCE8F6",
+              color: "#3F5F91",
+            }}
           >
             Evidence explorer
           </span>
@@ -1557,11 +1800,15 @@ export default function Ask() {
             <div className="mb-4 flex items-start gap-3">
               <div
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
-                style={{ backgroundColor: SOFT_BLUE, color: PURPLE }}
+                style={{
+                  backgroundColor: SOFT_BLUE,
+                  color: PURPLE,
+                }}
                 aria-hidden="true"
               >
                 ✦
               </div>
+
               <div>
                 <label
                   htmlFor="question"
@@ -1570,6 +1817,7 @@ export default function Ask() {
                 >
                   Your question
                 </label>
+
                 <p
                   className="mt-1 text-xs"
                   style={{ color: MUTED_TEXT }}
@@ -1678,7 +1926,10 @@ export default function Ask() {
           {restoring && (
             <p
               className="rounded-lg p-3 text-sm"
-              style={{ color: MUTED_TEXT, backgroundColor: SOFT_BLUE }}
+              style={{
+                color: MUTED_TEXT,
+                backgroundColor: SOFT_BLUE,
+              }}
               role="status"
             >
               Restoring your previous query…
@@ -1699,9 +1950,13 @@ export default function Ask() {
                   }}
                 >
                   <div>
-                    <h2 className="font-semibold" style={{ color: PURPLE }}>
+                    <h2
+                      className="font-semibold"
+                      style={{ color: PURPLE }}
+                    >
                       Query Result
                     </h2>
+
                     <p
                       className="mt-1 text-xs"
                       style={{ color: MUTED_TEXT }}
@@ -1711,6 +1966,18 @@ export default function Ask() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {result.demo && (
+                      <span
+                        className="inline-block rounded-full px-2 py-1 text-xs font-bold"
+                        style={{
+                          color: "#92400E",
+                          backgroundColor: "#FEF3C7",
+                        }}
+                      >
+                        DEMO / SIMULATED
+                      </span>
+                    )}
+
                     {resultModeLabel && (
                       <span
                         className="inline-block rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -1722,11 +1989,27 @@ export default function Ask() {
                         {resultModeLabel} mode
                       </span>
                     )}
+
                     <StatusBadge status={status} />
                   </div>
                 </div>
 
                 <div className="p-5">
+                  {result.demo && (
+                    <p
+                      className="mb-4 rounded-lg border px-3 py-2 text-xs leading-5"
+                      style={{
+                        borderColor: "#F0D7A0",
+                        backgroundColor: "#FFFBEB",
+                        color: "#92400E",
+                      }}
+                    >
+                      Scripted correction demo for this exact question only.
+                      No database write and no Claude call. Other questions
+                      still use the live RELI-RAG pipeline.
+                    </p>
+                  )}
+
                   {insufficientEvidence ? (
                     <div
                       className="rounded-xl border p-4"
@@ -1742,12 +2025,14 @@ export default function Ask() {
                         </span>
                         <p className="font-bold">Insufficient Evidence</p>
                       </div>
+
                       <p className="mt-2 text-sm leading-6">
-                        The retrieved documents do not provide enough reliable
-                        evidence to answer this question confidently. Try
-                        selecting other documents or asking a more specific
-                        question.
+                        The retrieved documents do not provide enough
+                        reliable evidence to answer this question confidently.
+                        Try selecting other documents or asking a more
+                        specific question.
                       </p>
+
                       {answer && (
                         <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
                           {answer}
@@ -1769,6 +2054,7 @@ export default function Ask() {
                       >
                         Answer
                       </div>
+
                       <div className="whitespace-pre-wrap">
                         {answer || "No answer was returned by the backend."}
                       </div>
@@ -1802,13 +2088,19 @@ export default function Ask() {
                 attemptCount={attempts.length}
               />
 
+              {result.demo && (
+                <ScriptedCorrectionTrail result={result} />
+              )}
+
               <section
                 className="rounded-xl border bg-white p-5 shadow-sm"
                 style={panelStyle}
               >
                 <button
                   type="button"
-                  onClick={() => setShowEvidence((value) => !value)}
+                  onClick={() =>
+                    setShowEvidence((value) => !value)
+                  }
                   className="flex w-full items-center justify-between text-left"
                   aria-expanded={showEvidence}
                 >
@@ -1826,9 +2118,13 @@ export default function Ask() {
                       Retrieved passages and supporting citations
                     </span>
                   </span>
+
                   <span
                     className="rounded-full px-3 py-1 text-xs font-semibold"
-                    style={{ backgroundColor: SOFT_BLUE, color: PURPLE }}
+                    style={{
+                      backgroundColor: SOFT_BLUE,
+                      color: PURPLE,
+                    }}
                     aria-hidden="true"
                   >
                     {showEvidence ? "Hide −" : "Show +"}
@@ -1869,9 +2165,13 @@ export default function Ask() {
                       Inspect retrieved data, timings, and attempts
                     </span>
                   </span>
+
                   <span
                     className="rounded-full px-3 py-1 text-xs font-semibold"
-                    style={{ backgroundColor: LAVENDER, color: PURPLE }}
+                    style={{
+                      backgroundColor: LAVENDER,
+                      color: PURPLE,
+                    }}
                     aria-hidden="true"
                   >
                     {showDebug ? "Hide −" : "Show +"}
@@ -1892,7 +2192,10 @@ export default function Ask() {
           )}
         </main>
 
-        <HistorySidebar history={queryHistory} onClear={clearHistory} />
+        <HistorySidebar
+          history={queryHistory}
+          onClear={clearHistory}
+        />
       </div>
     </div>
   );
