@@ -1588,7 +1588,7 @@ export default function Ask() {
     setShowDebug(false);
 
     try {
-      // Exact-match demo override only. Other questions use live RELI-RAG.
+      // Exact-match demo override only. Other questions use live Attest.
       if (isCorrectionDemoQuestion(submittedQuestion)) {
         await new Promise((resolve) => window.setTimeout(resolve, 9000));
 
@@ -1740,7 +1740,7 @@ export default function Ask() {
           className="text-xs font-bold uppercase tracking-[0.16em]"
           style={{ color: BLUE }}
         >
-          RELI-RAG · Retrieval Augmented Generation
+          Attest · Retrieval Augmented Generation
         </p>
 
         <h1
@@ -1868,7 +1868,7 @@ export default function Ask() {
                 className="rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ backgroundColor: PURPLE }}
               >
-                {loading ? "Processing pipeline…" : "Ask RELI-RAG →"}
+                {loading ? "Processing pipeline…" : "Ask Attest →"}
               </button>
 
               <button
@@ -2006,7 +2006,7 @@ export default function Ask() {
                     >
                       Scripted correction demo for this exact question only.
                       No database write and no Claude call. Other questions
-                      still use the live RELI-RAG pipeline.
+                      still use the live Attest pipeline.
                     </p>
                   )}
 

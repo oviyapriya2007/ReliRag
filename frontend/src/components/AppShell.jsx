@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { API_BASE_URL, USE_MOCK } from '../../api/client'
@@ -157,13 +156,17 @@ function AppShell() {
         {/* Brand */}
         <div className="relative border-b border-[#D4C5DF] px-5 py-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#55416F] text-lg font-bold text-white shadow-md shadow-[#55416F]/20">
-              R
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-md shadow-[#55416F]/20">
+              <img
+                src="/Attest_Project.jpg"
+                alt="Attest logo"
+                className="h-full w-full object-contain"
+              />
             </div>
 
             <div className="min-w-0">
               <h1 className="text-xl font-bold tracking-tight text-[#443453]">
-                RELI-RAG
+                Attest
               </h1>
 
               <p className="mt-0.5 text-xs text-[#796A87]">
@@ -310,7 +313,7 @@ function AppShell() {
           </div>
 
           <p className="mt-3 text-center text-[10px] font-medium text-[#8976A7]">
-            RELI-RAG · Evaluation Workspace
+            Attest · Evaluation Workspace
           </p>
         </div>
       </aside>

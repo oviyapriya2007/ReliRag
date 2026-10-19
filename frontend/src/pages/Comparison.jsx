@@ -176,7 +176,7 @@ function ScoreCard({ label, basicValue, reliValue }) {
       tint: "#F2EEF7",
     },
     {
-      label: "RELI-RAG",
+      label: "Attest",
       value: reliNumber,
       color: C.blue,
       tint: C.blueLight,
@@ -204,7 +204,7 @@ function ScoreCard({ label, basicValue, reliValue }) {
 
         <div className="rounded-xl p-3" style={{ background: C.blueLight }}>
           <p className="text-xs" style={{ color: C.blue }}>
-            RELI-RAG
+            Attest
           </p>
           <p className="mt-2 text-xl font-bold" style={{ color: "#496794" }}>
             {formatScore(reliValue)}
@@ -529,7 +529,7 @@ function Comparison() {
               className="rounded-full px-3 py-1.5 text-xs font-bold"
               style={{ background: "#FFFFFFC9", color: C.purple }}
             >
-              RELI-RAG
+              Attest
             </span>
             <span
               className="rounded-full px-3 py-1.5 text-xs font-semibold"
@@ -547,7 +547,7 @@ function Comparison() {
           </h1>
 
           <p className="mt-3 max-w-2xl text-sm leading-7 sm:text-base" style={{ color: C.muted }}>
-            Compare Basic RAG and RELI-RAG using the same question and inspect their answers, evaluation scores, and reported attempt details.
+            Compare Basic RAG and Attest using the same question and inspect their answers, evaluation scores, and reported attempt details.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-2">
@@ -822,7 +822,7 @@ function Comparison() {
               />
 
               <AnswerCard
-                title="RELI-RAG"
+                title="Attest"
                 result={comparison.reli}
                 attempt={reliAttempt}
                 system="reli"

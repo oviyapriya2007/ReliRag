@@ -566,7 +566,7 @@ function BasicVsReliComparison({ query }) {
     <section className="p-5 sm:p-6" style={panel}>
       <SectionHeading
         eyebrow="System benchmarking"
-        title="Basic RAG vs RELI-RAG"
+        title="Basic RAG vs Attest"
         description="Compare actual scores returned for both systems. Correction attempts are not Basic RAG results."
         icon="⇆"
       />
@@ -596,7 +596,7 @@ function BasicVsReliComparison({ query }) {
                   </p>
                 </div>
                 <div className="rounded-xl p-3" style={{ background: C.purpleLight }}>
-                  <p className="text-xs" style={{ color: C.purple }}>RELI-RAG</p>
+                  <p className="text-xs" style={{ color: C.purple }}>Attest</p>
                   <p className="mt-1 text-lg font-bold" style={{ color: C.purple }}>
                     {reli === null ? "N/A" : `${reli.toFixed(1)}%`}
                   </p>
@@ -820,7 +820,7 @@ function Evaluation() {
               className="rounded-full px-3 py-1.5 text-xs font-bold tracking-wide"
               style={{ background: "#FFFFFFC9", color: C.purple }}
             >
-              RELI-RAG
+              ATTEST
             </span>
             <span
               className="rounded-full px-3 py-1.5 text-xs font-semibold"
