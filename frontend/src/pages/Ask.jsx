@@ -8,11 +8,16 @@ import {
   runQuery,
 } from "../../api/client";
 
-const PURPLE = "#554188";
-const BLUE = "#738fbd";
+const PURPLE = "#55416F";
+const BLUE = "#738FBD";
+const SOFT_BLUE = "#EEF3FA";
+const LAVENDER = "#F3EDF5";
+const PALE_PINK = "#FBEFF4";
+const SOFT_MINT = "#EAF6EF";
 const BORDER = "#E5DBE6";
-const DARK_TEXT = "#292524";
-const MUTED_TEXT = "#57534E";
+const DARK_TEXT = "#29243A";
+const MUTED_TEXT = "#817789";
+const ROSE = "#DB88A4";
 
 const HISTORY_KEY = "relirag_query_history";
 const LAST_QUERY_KEY = "relirag_last_query_id";
@@ -21,7 +26,7 @@ const MAX_HISTORY = 10;
 
 const panelStyle = {
   borderColor: BORDER,
-  borderRadius: "12px",
+  borderRadius: "14px",
 };
 
 const QUERY_MODES = [
@@ -46,26 +51,11 @@ const DEFAULT_SETTINGS = {
 };
 
 const PIPELINE_STAGES = [
-  {
-    name: "Retrieve",
-    detail: "Finding relevant document passages",
-  },
-  {
-    name: "Generate",
-    detail: "Generating an evidence-based answer",
-  },
-  {
-    name: "Evaluate",
-    detail: "Checking answer quality and faithfulness",
-  },
-  {
-    name: "Correct",
-    detail: "Attempting to improve a failed answer",
-  },
-  {
-    name: "Re-evaluate",
-    detail: "Checking the updated answer",
-  },
+  { name: "Retrieve", detail: "Finding relevant document passages" },
+  { name: "Generate", detail: "Generating an evidence-based answer" },
+  { name: "Evaluate", detail: "Checking answer quality and faithfulness" },
+  { name: "Correct", detail: "Attempting to improve a failed answer" },
+  { name: "Re-evaluate", detail: "Checking the updated answer" },
 ];
 
 function readSettings() {
@@ -79,7 +69,6 @@ function readSettings() {
   }
 }
 
-// Collapsible evaluation settings panel
 function EvaluationSettingsPanel() {
   const [settings, setSettings] = useState(readSettings);
   const [expanded, setExpanded] = useState(false);
@@ -93,31 +82,25 @@ function EvaluationSettingsPanel() {
   }, [settings]);
 
   function updateSetting(name, value) {
-    setSettings((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
+    setSettings((previous) => ({ ...previous, [name]: value }));
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border bg-white" style={panelStyle}>
+    <section
+      className="overflow-hidden rounded-xl border bg-white shadow-sm"
+      style={panelStyle}
+    >
       <button
         type="button"
         onClick={() => setExpanded((previous) => !previous)}
         aria-expanded={expanded}
-        className="flex w-full items-center justify-between gap-4 p-5 text-left transition hover:bg-gray-50"
+        className="flex w-full items-center justify-between gap-4 p-5 text-left transition hover:bg-[#F8F5FA]"
       >
         <span className="min-w-0">
-          <span
-            className="block font-semibold"
-            style={{ color: PURPLE }}
-          >
+          <span className="block font-semibold" style={{ color: PURPLE }}>
             Evaluation settings
           </span>
-          <span
-            className="mt-1 block text-sm"
-            style={{ color: MUTED_TEXT }}
-          >
+          <span className="mt-1 block text-sm" style={{ color: MUTED_TEXT }}>
             Configure retrieval preferences
           </span>
         </span>
@@ -125,7 +108,7 @@ function EvaluationSettingsPanel() {
         <span
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg transition-transform duration-300"
           style={{
-            backgroundColor: "#F0ECF7",
+            backgroundColor: LAVENDER,
             color: PURPLE,
             transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
           }}
@@ -137,7 +120,7 @@ function EvaluationSettingsPanel() {
 
       {expanded && (
         <div
-          className="border-t p-5"
+          className="border-t bg-[#FCFAFD] p-5"
           style={{ borderColor: BORDER }}
         >
           <p className="text-sm leading-6" style={{ color: MUTED_TEXT }}>
@@ -148,7 +131,10 @@ function EvaluationSettingsPanel() {
           </p>
 
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
-            <div>
+            <div
+              className="rounded-xl border bg-white p-4"
+              style={{ borderColor: BORDER }}
+            >
               <div className="flex items-center justify-between gap-3">
                 <label htmlFor="ask-top-k" className="text-sm font-medium">
                   Top-k retrieval
@@ -171,7 +157,7 @@ function EvaluationSettingsPanel() {
                 onChange={(event) =>
                   updateSetting("topK", Number(event.target.value))
                 }
-                className="mt-3 w-full"
+                className="mt-3 w-full accent-[#738FBD]"
               />
 
               <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
@@ -179,7 +165,10 @@ function EvaluationSettingsPanel() {
               </p>
             </div>
 
-            <div>
+            <div
+              className="rounded-xl border bg-white p-4"
+              style={{ borderColor: BORDER }}
+            >
               <div className="flex items-center justify-between gap-3">
                 <label
                   htmlFor="ask-similarity-gate"
@@ -189,7 +178,7 @@ function EvaluationSettingsPanel() {
                 </label>
                 <span
                   className="text-sm font-semibold"
-                  style={{ color: PURPLE }}
+                  style={{ color: ROSE }}
                 >
                   {Number(settings.similarityGate).toFixed(2)}
                 </span>
@@ -205,7 +194,7 @@ function EvaluationSettingsPanel() {
                 onChange={(event) =>
                   updateSetting("similarityGate", Number(event.target.value))
                 }
-                className="mt-3 w-full"
+                className="mt-3 w-full accent-[#DB88A4]"
               />
 
               <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
@@ -221,7 +210,7 @@ function EvaluationSettingsPanel() {
             <button
               type="button"
               onClick={() => setSettings({ ...DEFAULT_SETTINGS })}
-              className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50"
+              className="rounded-lg border bg-white px-4 py-2 text-sm font-medium transition hover:bg-[#F3EDF5]"
               style={{ borderColor: BORDER, color: DARK_TEXT }}
             >
               Reset settings
@@ -236,7 +225,8 @@ function EvaluationSettingsPanel() {
 function readHistory() {
   try {
     const saved = localStorage.getItem(HISTORY_KEY);
-    return saved ? JSON.parse(saved) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, MAX_HISTORY) : [];
   } catch {
     return [];
   }
@@ -254,14 +244,19 @@ function saveHistory(history) {
 }
 
 function getStatus(data) {
-  const attempt = data?.attempts?.at(-1);
+  const attempts = data?.attempts;
+  const attempt = Array.isArray(attempts)
+    ? attempts[attempts.length - 1]
+    : null;
 
   return (
     data?.final_status ??
     data?.status ??
     attempt?.status ??
     "UNKNOWN"
-  ).toString().toUpperCase();
+  )
+    .toString()
+    .toUpperCase();
 }
 
 function formatScore(value) {
@@ -290,16 +285,16 @@ function StatusBadge({ status }) {
         : "#166534";
 
   const background = insufficient
-    ? "#FEF3C7"
+    ? "#FFF2D6"
     : failed
-      ? "#FEE2E2"
+      ? "#FCE8EC"
       : normalized === "UNKNOWN"
-        ? "#F5F5F4"
-        : "#DCFCE7";
+        ? "#F3EDF5"
+        : "#E4F4EA";
 
   return (
     <span
-      className="inline-block rounded-full px-2 py-1 text-xs font-semibold"
+      className="inline-block rounded-full px-2.5 py-1 text-xs font-semibold"
       style={{ color, backgroundColor: background }}
     >
       {normalized.replaceAll("_", " ")}
@@ -310,7 +305,7 @@ function StatusBadge({ status }) {
 function HistorySidebar({ history, onClear }) {
   return (
     <aside
-      className="h-fit border bg-white p-4 shadow-sm xl:sticky xl:top-6"
+      className="h-fit border bg-[#FCFAFD] p-4 shadow-sm xl:sticky xl:top-6"
       style={panelStyle}
     >
       <div className="flex items-center justify-between gap-2">
@@ -322,7 +317,7 @@ function HistorySidebar({ history, onClear }) {
           <button
             type="button"
             onClick={onClear}
-            className="text-xs font-medium text-red-600 hover:underline"
+            className="text-xs font-medium text-rose-600 hover:underline"
           >
             Clear
           </button>
@@ -335,10 +330,12 @@ function HistorySidebar({ history, onClear }) {
 
       {history.length === 0 ? (
         <div
-          className="mt-5 rounded-lg border border-dashed p-4 text-center text-sm"
+          className="mt-5 rounded-xl border border-dashed bg-white p-4 text-center text-sm"
           style={{ borderColor: BORDER, color: MUTED_TEXT }}
         >
-          <p className="text-2xl">◷</p>
+          <p className="text-2xl" style={{ color: BLUE }}>
+            ◷
+          </p>
           <p className="mt-2 font-medium">No recent queries</p>
           <p className="mt-1 text-xs">
             Ask a question to build your history.
@@ -346,12 +343,16 @@ function HistorySidebar({ history, onClear }) {
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {history.map((item) => (
+          {history.map((item, index) => (
             <Link
               key={String(item.id)}
               to={`/query/${encodeURIComponent(item.id)}`}
-              className="block rounded-lg border p-3 transition hover:bg-gray-50"
-              style={{ borderColor: BORDER }}
+              className="block rounded-xl border bg-white p-3 transition hover:bg-[#EEF3FA]"
+              style={{
+                borderColor: BORDER,
+                borderLeftWidth: "3px",
+                borderLeftColor: index % 2 === 0 ? BLUE : ROSE,
+              }}
             >
               <p
                 className="line-clamp-3 text-sm font-medium"
@@ -370,7 +371,7 @@ function HistorySidebar({ history, onClear }) {
                   : "Recent query"}
               </p>
 
-              <p className="mt-1 text-xs" style={{ color: BLUE }}>
+              <p className="mt-1 text-xs font-medium" style={{ color: BLUE }}>
                 View query →
               </p>
             </Link>
@@ -399,14 +400,20 @@ function ModeSelector({ mode, onChange, disabled }) {
       <div className="mt-2 grid gap-3 sm:grid-cols-2">
         {QUERY_MODES.map((option) => {
           const checked = mode === option.value;
+          const accent = option.value === "reli" ? ROSE : BLUE;
 
           return (
             <label
               key={option.value}
-              className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+              className="flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition"
               style={{
-                borderColor: checked ? BLUE : BORDER,
-                backgroundColor: checked ? "#F4F7FC" : "white",
+                borderColor: checked ? accent : BORDER,
+                backgroundColor: checked
+                  ? option.value === "reli"
+                    ? PALE_PINK
+                    : SOFT_BLUE
+                  : "white",
+                boxShadow: checked ? `0 0 0 1px ${accent}22` : "none",
                 opacity: disabled ? 0.6 : 1,
               }}
             >
@@ -416,15 +423,26 @@ function ModeSelector({ mode, onChange, disabled }) {
                 value={option.value}
                 checked={checked}
                 onChange={() => onChange(option.value)}
-                className="mt-1"
+                className="mt-1 accent-[#738FBD]"
               />
 
               <span className="min-w-0">
                 <span
-                  className="block text-sm font-medium"
-                  style={{ color: DARK_TEXT }}
+                  className="block text-sm font-semibold"
+                  style={{ color: PURPLE }}
                 >
                   {option.label}
+                  {option.value === "reli" && (
+                    <span
+                      className="ml-2 rounded-full px-2 py-0.5 text-[10px]"
+                      style={{
+                        backgroundColor: "#F3DCE6",
+                        color: "#884C67",
+                      }}
+                    >
+                      EVALUATED
+                    </span>
+                  )}
                 </span>
                 <span
                   className="mt-1 block text-xs"
@@ -453,7 +471,10 @@ function DocumentSelector({
     documents.every((doc) => selectedDocuments.includes(String(doc.id)));
 
   return (
-    <section className="rounded-xl border bg-white p-5" style={panelStyle}>
+    <section
+      className="rounded-xl border bg-white p-5 shadow-sm"
+      style={panelStyle}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold" style={{ color: PURPLE }}>
@@ -468,7 +489,7 @@ function DocumentSelector({
           type="button"
           onClick={onToggleAll}
           disabled={loading || documents.length === 0}
-          className="text-sm font-semibold disabled:opacity-50"
+          className="rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-[#EEF3FA] disabled:opacity-50"
           style={{ color: BLUE }}
         >
           {allSelected ? "Deselect all" : "Select all"}
@@ -476,37 +497,53 @@ function DocumentSelector({
       </div>
 
       {loading ? (
-        <p className="mt-4 text-sm" style={{ color: MUTED_TEXT }}>
+        <p
+          className="mt-4 rounded-lg p-3 text-sm"
+          style={{ backgroundColor: SOFT_BLUE, color: MUTED_TEXT }}
+          role="status"
+        >
           Loading documents…
         </p>
       ) : documents.length === 0 ? (
-        <p className="mt-4 text-sm" style={{ color: MUTED_TEXT }}>
+        <p
+          className="mt-4 rounded-lg p-3 text-sm"
+          style={{ backgroundColor: PALE_PINK, color: MUTED_TEXT }}
+        >
           No documents available. Upload documents before querying.
         </p>
       ) : (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {documents.map((doc) => {
+          {documents.map((doc, index) => {
             const id = String(doc.id);
             const checked = selectedDocuments.includes(id);
+            const accent = index % 2 === 0 ? BLUE : ROSE;
 
             return (
               <label
                 key={id}
-                className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                className="flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition hover:shadow-sm"
                 style={{
-                  borderColor: checked ? BLUE : BORDER,
-                  backgroundColor: checked ? "#F4F7FC" : "white",
+                  borderColor: checked ? accent : BORDER,
+                  borderLeftWidth: checked ? "3px" : "1px",
+                  backgroundColor: checked
+                    ? index % 2 === 0
+                      ? SOFT_BLUE
+                      : PALE_PINK
+                    : "#FCFAFD",
                 }}
               >
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => onToggle(id)}
-                  className="mt-1"
+                  className="mt-1 accent-[#738FBD]"
                 />
 
                 <span className="min-w-0">
-                  <span className="block break-words text-sm font-medium">
+                  <span
+                    className="block break-words text-sm font-medium"
+                    style={{ color: DARK_TEXT }}
+                  >
                     {doc.name || doc.filename || `Document ${id}`}
                   </span>
                   <span
@@ -525,6 +562,10 @@ function DocumentSelector({
   );
 }
 
+/* =========================================
+   Correction Pipeline
+   ========================================= */
+
 const PIPELINE_STAGE_MS = 2200;
 
 function prefersReducedMotion() {
@@ -536,29 +577,37 @@ function useReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(prefersReducedMotion);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return undefined;
+    }
 
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const sync = () => setReducedMotion(media.matches);
+
     media.addEventListener?.("change", sync);
+
     return () => media.removeEventListener?.("change", sync);
   }, []);
 
   return reducedMotion;
 }
 
-// Mounted only while a query is in flight so stage state remounts cleanly.
 function IllustrativePipelineProgress({ reducedMotion }) {
   const stageCount = PIPELINE_STAGES.length;
-  const [activeStage, setActiveStage] = useState(() =>
-    reducedMotion ? stageCount - 1 : 0,
-  );
+  const [activeStage, setActiveStage] = useState(0);
 
   useEffect(() => {
-    if (reducedMotion) return undefined;
+    if (reducedMotion) {
+      setActiveStage(stageCount - 1);
+      return undefined;
+    }
+
+    setActiveStage(0);
 
     const interval = window.setInterval(() => {
-      setActiveStage((current) => Math.min(current + 1, stageCount - 1));
+      setActiveStage((current) =>
+        current >= stageCount - 1 ? 0 : current + 1
+      );
     }, PIPELINE_STAGE_MS);
 
     return () => window.clearInterval(interval);
@@ -574,14 +623,15 @@ function IllustrativePipelineProgress({ reducedMotion }) {
           <span style={{ color: MUTED_TEXT }}>
             {reducedMotion
               ? "Reduced motion: static wait indicator"
-              : `Stage ${focusStage + 1} of ${stageCount} (time-based)`}
+              : `Stage ${focusStage + 1} of ${stageCount} (illustrative)`}
           </span>
           <span className="font-semibold" style={{ color: PURPLE }}>
             {Math.round(illustrativeProgress)}%
           </span>
         </div>
+
         <div
-          className="pipeline-progress-track mt-2"
+          className="pipeline-progress-track mt-2 overflow-hidden rounded-full"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
@@ -589,8 +639,11 @@ function IllustrativePipelineProgress({ reducedMotion }) {
           aria-label="Illustrative pipeline progress"
         >
           <div
-            className="pipeline-progress-fill"
-            style={{ width: `${illustrativeProgress}%` }}
+            className="pipeline-progress-fill rounded-full"
+            style={{
+              width: `${illustrativeProgress}%`,
+              backgroundColor: BLUE,
+            }}
           />
         </div>
       </div>
@@ -615,10 +668,10 @@ function IllustrativePipelineProgress({ reducedMotion }) {
         }}
       />
 
-      <p className="mt-4 text-xs" style={{ color: MUTED_TEXT }}>
-        Stage highlighting is a time-based visual aid while waiting for the
-        backend. It does not report live stage completion. Actual evaluation
-        and correction results appear when the response arrives.
+      <p className="mt-4 text-xs leading-5" style={{ color: MUTED_TEXT }}>
+        This animation is a visual aid while waiting for the backend. It does
+        not report live stage completion. Actual evaluation and correction
+        results appear when the response arrives.
       </p>
     </>
   );
@@ -646,27 +699,27 @@ function PipelineStageGrid({
         const borderColor = active
           ? BLUE
           : complete
-            ? "#86EFAC"
+            ? "#A5D8B5"
             : failed
-              ? "#FCA5A5"
+              ? "#E8A6B3"
               : elapsed
-                ? "#C4B5D6"
+                ? "#C8B6D9"
                 : BORDER;
 
         const backgroundColor = active
-          ? "#F0F5FF"
+          ? SOFT_BLUE
           : complete
-            ? "#F0FDF4"
+            ? SOFT_MINT
             : failed
-              ? "#FEF2F2"
+              ? "#FCECF0"
               : elapsed
-                ? "#F7F4FB"
-                : "#FAFAF9";
+                ? LAVENDER
+                : "#FCFAFD";
 
         return (
           <div
             key={stage.name}
-            className={`pipeline-stage relative ${
+            className={`pipeline-stage ${
               active ? "pipeline-stage--active" : ""
             } ${elapsed ? "pipeline-stage--elapsed" : ""}`}
           >
@@ -699,13 +752,16 @@ function PipelineStageGrid({
                         ? "#166534"
                         : PURPLE,
                     backgroundColor: failed
-                      ? "#FEE2E2"
+                      ? "#F7DCE3"
                       : complete
-                        ? "#DCFCE7"
+                        ? "#D6EEDC"
                         : active
-                          ? "#DCE8F8"
-                          : "#E5DBE6",
+                          ? "#D5E3F4"
+                          : elapsed
+                            ? "#E6D9F0"
+                            : "#F0E8F2",
                   }}
+                  aria-hidden="true"
                 >
                   {complete
                     ? "✓"
@@ -718,14 +774,15 @@ function PipelineStageGrid({
                           : index + 1}
                 </span>
 
-                {active && !reducedMotion && (
+                {active && loading && !reducedMotion && (
                   <span
-                    className="pipeline-spinner h-4 w-4 rounded-full border-2"
+                    className="pipeline-spinner inline-block h-4 w-4 rounded-full border-2"
                     style={{
                       borderColor: BLUE,
                       borderTopColor: "transparent",
                     }}
-                    aria-label="Illustrative stage focus"
+                    role="img"
+                    aria-label="Illustrative stage animation"
                   />
                 )}
               </div>
@@ -766,20 +823,19 @@ function PipelineStageGrid({
   );
 }
 
-// Animated workflow. While loading, stage highlighting is time-based and
-// illustrative only. After the response arrives, states come from the payload.
 function CorrectionPipeline({ loading, result, error, mode }) {
   const reducedMotion = useReducedMotion();
 
   if (!loading && !result && !error) return null;
 
-  const attempts = result?.attempts || [];
+  const attempts = Array.isArray(result?.attempts) ? result.attempts : [];
+
   const finalAttempt =
     attempts.find(
       (attempt) =>
         result?.final_attempt_number != null &&
         Number(attempt.attempt_number) ===
-          Number(result.final_attempt_number),
+          Number(result.final_attempt_number)
     ) || attempts[attempts.length - 1];
 
   const evaluation = finalAttempt?.evaluation;
@@ -822,6 +878,7 @@ function CorrectionPipeline({ loading, result, error, mode }) {
     if (state === "failed") return "Check result";
     if (state === "skipped") return "Not required / not reported";
     if (state === "unknown") return "Evaluation data unavailable";
+
     if (state === "complete") {
       if (index === 2) {
         return evaluation?.passed === true
@@ -832,12 +889,13 @@ function CorrectionPipeline({ loading, result, error, mode }) {
       if (index === 4) return "Final evaluation received";
       return "Completed";
     }
-    return "Waiting";
+
+    return "Not confirmed";
   }
 
   return (
     <section
-      className="pipeline-panel rounded-xl border bg-white p-5"
+      className="pipeline-panel rounded-xl border bg-white p-5 shadow-sm"
       style={panelStyle}
       aria-live="polite"
     >
@@ -856,10 +914,10 @@ function CorrectionPipeline({ loading, result, error, mode }) {
           style={{
             color: loading ? PURPLE : error ? "#991B1B" : "#166534",
             backgroundColor: loading
-              ? "#EAF0FA"
+              ? SOFT_BLUE
               : error
-                ? "#FEE2E2"
-                : "#DCFCE7",
+                ? "#FCE8EC"
+                : SOFT_MINT,
           }}
         >
           {loading
@@ -873,28 +931,29 @@ function CorrectionPipeline({ loading, result, error, mode }) {
       {loading ? (
         <IllustrativePipelineProgress reducedMotion={reducedMotion} />
       ) : (
-        <>
-          <PipelineStageGrid
-            loading={false}
-            reducedMotion={reducedMotion}
-            activeStage={PIPELINE_STAGES.length}
-            getStageState={getResultStageState}
-            getStageMessage={getResultStageMessage}
-          />
+        <PipelineStageGrid
+          loading={false}
+          reducedMotion={reducedMotion}
+          activeStage={PIPELINE_STAGES.length}
+          getStageState={getResultStageState}
+          getStageMessage={getResultStageMessage}
+        />
+      )}
 
-          {error && (
-            <p className="mt-4 text-sm" style={{ color: "#991B1B" }}>
-              The request did not complete successfully. Check the error message
-              below.
-            </p>
-          )}
-        </>
+      {error && (
+        <p className="mt-4 text-sm" style={{ color: "#991B1B" }}>
+          The request did not complete successfully. Check the error message
+          below.
+        </p>
       )}
     </section>
   );
 }
 
-// Must match the failure types in backend/app/services/evaluator.py.
+/* =========================================
+   Evaluation Results
+   ========================================= */
+
 const FAILURE_LABELS = {
   unsupported_claim: "Unsupported claim",
   missing_info: "Missing information",
@@ -907,7 +966,7 @@ function getVerdict(evaluation) {
     return {
       label: "NOT EVALUATED",
       color: MUTED_TEXT,
-      background: "#F5F5F4",
+      background: LAVENDER,
     };
   }
 
@@ -915,22 +974,22 @@ function getVerdict(evaluation) {
     return {
       label: "EVALUATOR ERROR",
       color: "#92400E",
-      background: "#FEF3C7",
+      background: "#FFF2D6",
     };
   }
 
   if (evaluation.passed === true) {
-    return { label: "PASSED", color: "#166534", background: "#DCFCE7" };
+    return { label: "PASSED", color: "#166534", background: "#E4F4EA" };
   }
 
   if (evaluation.passed === false) {
-    return { label: "FAILED", color: "#991B1B", background: "#FEE2E2" };
+    return { label: "FAILED", color: "#991B1B", background: "#FCE8EC" };
   }
 
   return {
     label: "NOT DETERMINED",
     color: MUTED_TEXT,
-    background: "#F5F5F4",
+    background: LAVENDER,
   };
 }
 
@@ -941,21 +1000,30 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
     {
       label: "Faithfulness",
       value: evaluation?.faithfulness ?? evaluation?.faithfulness_score,
+      background: SOFT_BLUE,
+      accent: BLUE,
     },
     {
       label: "Answer relevance",
       value:
         evaluation?.answer_relevance ?? evaluation?.answer_relevance_score,
+      background: PALE_PINK,
+      accent: ROSE,
     },
     {
       label: "Context relevance",
       value:
         evaluation?.context_relevance ?? evaluation?.context_relevance_score,
+      background: LAVENDER,
+      accent: PURPLE,
     },
   ];
 
   return (
-    <section className="rounded-xl border bg-white p-5" style={panelStyle}>
+    <section
+      className="rounded-xl border bg-white p-5 shadow-sm"
+      style={panelStyle}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold" style={{ color: PURPLE }}>
           Evaluation Summary
@@ -969,7 +1037,7 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
 
       <div
         className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border p-3"
-        style={{ borderColor: BORDER }}
+        style={{ borderColor: BORDER, backgroundColor: "#FCFAFD" }}
       >
         <span className="text-sm font-semibold" style={{ color: DARK_TEXT }}>
           Evaluation verdict:
@@ -997,10 +1065,15 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
         {metrics.map((metric) => (
           <div
             key={metric.label}
-            className="rounded-lg p-4"
-            style={{ backgroundColor: "#F5F5F4" }}
+            className="rounded-xl border p-4"
+            style={{
+              backgroundColor: metric.background,
+              borderColor: `${metric.accent}55`,
+              borderTopWidth: "3px",
+              borderTopColor: metric.accent,
+            }}
           >
-            <p className="text-xs" style={{ color: MUTED_TEXT }}>
+            <p className="text-xs font-medium" style={{ color: MUTED_TEXT }}>
               {metric.label}
             </p>
             <p className="mt-2 text-2xl font-bold" style={{ color: PURPLE }}>
@@ -1018,49 +1091,60 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
   );
 }
 
+/* =========================================
+   Evidence Explorer
+   ========================================= */
+
 function EvidenceExplorer({ citations, retrieval }) {
-  const [expanded, setExpanded] = useState(true);
-  const items = retrieval || [];
+  const items = Array.isArray(retrieval) ? retrieval : [];
+  const citationList = Array.isArray(citations) ? citations : [];
 
   return (
-    <section className="rounded-xl border bg-white p-5" style={panelStyle}>
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full items-center justify-between gap-3 text-left"
-      >
-        <span>
-          <span className="block font-semibold" style={{ color: PURPLE }}>
-            Evidence Explorer
-          </span>
-          <span className="mt-1 block text-sm" style={{ color: MUTED_TEXT }}>
-            Retrieved passages and supporting citations
-          </span>
-        </span>
-        <span style={{ color: PURPLE }}>{expanded ? "−" : "+"}</span>
-      </button>
+    <section
+      className="rounded-xl border bg-white p-5 shadow-sm"
+      style={panelStyle}
+    >
+      <h2 className="font-semibold" style={{ color: PURPLE }}>
+        Retrieved Evidence
+      </h2>
+      <p className="mt-1 text-sm" style={{ color: MUTED_TEXT }}>
+        Retrieved passages and supporting citations
+      </p>
 
-      {expanded && (
-        <div className="mt-4 space-y-3">
-          {items.length === 0 ? (
-            <p className="text-sm" style={{ color: MUTED_TEXT }}>
-              No retrieved evidence was returned.
-            </p>
-          ) : (
-            items.map((item, index) => (
+      <div className="mt-4 space-y-3">
+        {items.length === 0 && citationList.length === 0 ? (
+          <p
+            className="rounded-lg p-3 text-sm"
+            style={{ color: MUTED_TEXT, backgroundColor: "#FCFAFD" }}
+          >
+            No retrieved evidence or citations were returned.
+          </p>
+        ) : (
+          <>
+            {items.map((item, index) => (
               <article
                 key={`${item.chunk_id ?? item.id ?? index}-${index}`}
-                className="rounded-lg border p-4"
-                style={{ borderColor: BORDER }}
+                className="rounded-xl border p-4"
+                style={{
+                  borderColor: BORDER,
+                  backgroundColor: index % 2 === 0 ? "#FCFAFD" : "#F8F6FA",
+                  borderLeft: `3px solid ${index % 2 === 0 ? BLUE : ROSE}`,
+                }}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">
+                  <p
+                    className="text-sm font-semibold"
+                    style={{ color: DARK_TEXT }}
+                  >
                     [{item.rank ?? index + 1}]{" "}
                     {item.filename || item.document_name || "Source document"}
                   </p>
 
                   {item.similarity != null && (
-                    <span className="text-xs font-semibold" style={{ color: BLUE }}>
+                    <span
+                      className="rounded-full px-2 py-1 text-xs font-semibold"
+                      style={{ color: PURPLE, backgroundColor: SOFT_BLUE }}
+                    >
                       Similarity: {formatScore(item.similarity)}
                     </span>
                   )}
@@ -1073,81 +1157,93 @@ function EvidenceExplorer({ citations, retrieval }) {
                   {item.chunk_id != null ? ` · Chunk ${item.chunk_id}` : ""}
                 </p>
 
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                <p
+                  className="mt-3 whitespace-pre-wrap text-sm leading-6"
+                  style={{ color: DARK_TEXT }}
+                >
                   {item.content || item.text || "No passage text available."}
                 </p>
               </article>
-            ))
-          )}
+            ))}
 
-          {citations?.length > 0 && (
-            <div
-              className="rounded-lg p-3"
-              style={{ backgroundColor: "#F5F5F4" }}
-            >
-              <p className="text-sm font-semibold">Answer citations</p>
-              <p className="mt-1 text-sm" style={{ color: MUTED_TEXT }}>
-                {citations
-                  .map((citation) =>
-                    typeof citation === "object"
-                      ? citation.filename ||
-                        citation.id ||
-                        JSON.stringify(citation)
-                      : citation
-                  )
-                  .join(", ")}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+            {citationList.length > 0 && (
+              <div
+                className="rounded-xl border p-3"
+                style={{
+                  backgroundColor: PALE_PINK,
+                  borderColor: "#F0D7E1",
+                }}
+              >
+                <p className="text-sm font-semibold" style={{ color: PURPLE }}>
+                  Answer citations
+                </p>
+                <p className="mt-1 text-sm" style={{ color: MUTED_TEXT }}>
+                  {citationList
+                    .map((citation) =>
+                      typeof citation === "object"
+                        ? citation.filename ||
+                          citation.id ||
+                          JSON.stringify(citation)
+                        : citation
+                    )
+                    .join(", ")}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
 }
+
+/* =========================================
+   Retrieval Debug Panel
+   ========================================= */
 
 function RetrievalDebugPanel({ retrieval, timings, attempts }) {
-  const [expanded, setExpanded] = useState(false);
-
   return (
-    <section className="rounded-xl border bg-white p-5" style={panelStyle}>
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full items-center justify-between gap-3 text-left"
-      >
-        <span>
-          <span className="block font-semibold" style={{ color: PURPLE }}>
-            Retrieval Debug Panel
-          </span>
-          <span className="mt-1 block text-sm" style={{ color: MUTED_TEXT }}>
-            Inspect retrieval details, timings, and attempts
-          </span>
-        </span>
-        <span style={{ color: PURPLE }}>{expanded ? "−" : "+"}</span>
-      </button>
+    <section
+      className="rounded-xl border bg-white p-5 shadow-sm"
+      style={panelStyle}
+    >
+      <h2 className="font-semibold" style={{ color: PURPLE }}>
+        Debug Information
+      </h2>
+      <p className="mt-1 text-sm" style={{ color: MUTED_TEXT }}>
+        Inspect retrieved data, timings, and attempts.
+      </p>
 
-      {expanded && (
-        <div className="mt-4 space-y-4">
-          {[
-            ["Retrieved chunks", retrieval || []],
-            ["Timings", timings || {}],
-            ["Query attempts", attempts || []],
-          ].map(([title, value]) => (
-            <div key={title}>
-              <h3 className="text-sm font-semibold">{title}</h3>
-              <pre
-                className="mt-2 overflow-x-auto rounded-lg p-3 text-xs"
-                style={{ backgroundColor: "#F5F5F4" }}
-              >
-                {JSON.stringify(value, null, 2)}
-              </pre>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="mt-4 space-y-4">
+        {[
+          ["Retrieved chunks", retrieval || []],
+          ["Timings", timings || {}],
+          ["Query attempts", attempts || []],
+        ].map(([title, value], index) => (
+          <div key={title}>
+            <h3 className="text-sm font-semibold" style={{ color: PURPLE }}>
+              {title}
+            </h3>
+            <pre
+              className="mt-2 overflow-x-auto rounded-lg border p-3 text-xs"
+              style={{
+                backgroundColor: index % 2 === 0 ? SOFT_BLUE : LAVENDER,
+                borderColor: BORDER,
+                color: DARK_TEXT,
+              }}
+            >
+              {JSON.stringify(value, null, 2)}
+            </pre>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
+
+/* =========================================
+   Ask Page
+   ========================================= */
 
 export default function Ask() {
   const [question, setQuestion] = useState("");
@@ -1155,9 +1251,13 @@ export default function Ask() {
   const [documents, setDocuments] = useState([]);
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [result, setResult] = useState(null);
-  const [queryId, setQueryId] = useState(
-    sessionStorage.getItem(LAST_QUERY_KEY)
-  );
+  const [queryId, setQueryId] = useState(() => {
+    try {
+      return sessionStorage.getItem(LAST_QUERY_KEY);
+    } catch {
+      return null;
+    }
+  });
   const [queryHistory, setQueryHistory] = useState(readHistory);
   const [loading, setLoading] = useState(false);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
@@ -1261,6 +1361,8 @@ export default function Ask() {
   async function handleSubmit(event) {
     event.preventDefault();
 
+    if (loading) return;
+
     const submittedQuestion = question.trim();
 
     if (!submittedQuestion) {
@@ -1276,6 +1378,7 @@ export default function Ask() {
     setLoading(true);
     setError("");
     setResult(null);
+    setQueryId(null);
     setShowEvidence(true);
     setShowDebug(false);
 
@@ -1299,6 +1402,7 @@ export default function Ask() {
         // Keep the default Top-k value.
       }
 
+      // Preserve the existing API client and request parameters.
       const data = await runQuery({
         question: submittedQuestion,
         documentIds: selectedDocuments,
@@ -1312,7 +1416,13 @@ export default function Ask() {
 
       if (id != null) {
         setQueryId(String(id));
-        sessionStorage.setItem(LAST_QUERY_KEY, String(id));
+
+        try {
+          sessionStorage.setItem(LAST_QUERY_KEY, String(id));
+        } catch {
+          // Restoring the last query is optional.
+        }
+
         recordHistory(id, submittedQuestion, data);
       } else {
         setQueryHistory((previous) => {
@@ -1342,7 +1452,7 @@ export default function Ask() {
     saveHistory([]);
   }
 
-  const attempts = result?.attempts || [];
+  const attempts = Array.isArray(result?.attempts) ? result.attempts : [];
 
   const reportedAttempt =
     attempts.find(
@@ -1380,17 +1490,59 @@ export default function Ask() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-      <div className="mb-6">
-        <p className="text-sm font-semibold" style={{ color: BLUE }}>
-          RELI-RAG · RETRIEVAL AUGMENTED GENERATION
+      <div
+        className="relative mb-6 overflow-hidden rounded-2xl border p-5 sm:p-7"
+        style={{
+          backgroundColor: LAVENDER,
+          borderColor: BORDER,
+        }}
+      >
+        <div
+          className="absolute right-0 top-0 h-2 w-32 rounded-bl-full"
+          style={{ backgroundColor: ROSE }}
+          aria-hidden="true"
+        />
+
+        <p
+          className="text-xs font-bold uppercase tracking-[0.16em]"
+          style={{ color: BLUE }}
+        >
+          RELI-RAG · Retrieval Augmented Generation
         </p>
-        <h1 className="mt-2 text-2xl font-bold" style={{ color: PURPLE }}>
+        <h1
+          className="mt-2 text-2xl font-bold sm:text-3xl"
+          style={{ color: PURPLE }}
+        >
           Ask a Question
         </h1>
-        <p className="mt-2 text-sm" style={{ color: MUTED_TEXT }}>
+        <p
+          className="mt-2 max-w-2xl text-sm leading-6"
+          style={{ color: MUTED_TEXT }}
+        >
           Ask questions grounded in your documents and inspect the evidence
           behind each answer.
         </p>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span
+            className="rounded-full border bg-white px-3 py-1 text-xs font-medium"
+            style={{ borderColor: BORDER, color: PURPLE }}
+          >
+            Document-grounded answers
+          </span>
+          <span
+            className="rounded-full px-3 py-1 text-xs font-medium"
+            style={{ backgroundColor: "#F7DCE6", color: "#884C67" }}
+          >
+            Evaluation insights
+          </span>
+          <span
+            className="rounded-full px-3 py-1 text-xs font-medium"
+            style={{ backgroundColor: "#DCE8F6", color: "#3F5F91" }}
+          >
+            Evidence explorer
+          </span>
+        </div>
       </div>
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -1399,16 +1551,33 @@ export default function Ask() {
 
           <form
             onSubmit={handleSubmit}
-            className="rounded-xl border bg-white p-5"
+            className="rounded-xl border bg-white p-5 shadow-sm sm:p-6"
             style={panelStyle}
           >
-            <label
-              htmlFor="question"
-              className="block font-semibold"
-              style={{ color: PURPLE }}
-            >
-              Your question
-            </label>
+            <div className="mb-4 flex items-start gap-3">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
+                style={{ backgroundColor: SOFT_BLUE, color: PURPLE }}
+                aria-hidden="true"
+              >
+                ✦
+              </div>
+              <div>
+                <label
+                  htmlFor="question"
+                  className="block font-semibold"
+                  style={{ color: PURPLE }}
+                >
+                  Your question
+                </label>
+                <p
+                  className="mt-1 text-xs"
+                  style={{ color: MUTED_TEXT }}
+                >
+                  Ask something about the selected knowledge sources.
+                </p>
+              </div>
+            </div>
 
             <textarea
               id="question"
@@ -1416,12 +1585,22 @@ export default function Ask() {
               onChange={(event) => setQuestion(event.target.value)}
               placeholder="Ask something about your uploaded documents..."
               rows={4}
-              className="mt-3 w-full resize-y rounded-lg border p-3 text-sm outline-none focus:ring-2"
-              style={{ borderColor: BORDER, color: DARK_TEXT }}
+              className="mt-1 w-full resize-y rounded-xl border p-4 text-sm outline-none transition focus:ring-2"
+              style={{
+                borderColor: BORDER,
+                color: DARK_TEXT,
+                backgroundColor: "#FCFAFD",
+                "--tw-ring-color": `${BLUE}66`,
+              }}
               disabled={loading}
+              aria-describedby="question-help"
             />
 
-            <p className="mt-2 text-xs" style={{ color: MUTED_TEXT }}>
+            <p
+              id="question-help"
+              className="mt-2 text-xs"
+              style={{ color: MUTED_TEXT }}
+            >
               Choose the relevant documents below before submitting.
             </p>
 
@@ -1431,14 +1610,17 @@ export default function Ask() {
               disabled={loading}
             />
 
-            <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div
+              className="mt-5 flex flex-wrap items-center gap-3 border-t pt-5"
+              style={{ borderColor: BORDER }}
+            >
               <button
                 type="submit"
                 disabled={loading || loadingDocuments}
-                className="rounded-lg px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ backgroundColor: PURPLE }}
               >
-                {loading ? "Processing pipeline…" : "Ask RELI-RAG"}
+                {loading ? "Processing pipeline…" : "Ask RELI-RAG →"}
               </button>
 
               <button
@@ -1446,18 +1628,23 @@ export default function Ask() {
                 onClick={() => {
                   setQuestion("");
                   setResult(null);
+                  setQueryId(null);
                   setError("");
                 }}
                 disabled={loading}
-                className="rounded-lg border px-4 py-3 text-sm font-medium disabled:opacity-50"
+                className="rounded-xl border bg-white px-4 py-3 text-sm font-medium transition hover:bg-[#F3EDF5] disabled:opacity-50"
                 style={{ borderColor: BORDER, color: DARK_TEXT }}
               >
                 Clear question
               </button>
+
+              <span className="text-xs" style={{ color: MUTED_TEXT }}>
+                {selectedDocuments.length} document
+                {selectedDocuments.length === 1 ? "" : "s"} selected
+              </span>
             </div>
           </form>
 
-          {/* Correction pipeline appears directly below the question form. */}
           <CorrectionPipeline
             loading={loading}
             result={result}
@@ -1478,8 +1665,8 @@ export default function Ask() {
               role="alert"
               className="rounded-xl border p-4 text-sm"
               style={{
-                borderColor: "#FCA5A5",
-                backgroundColor: "#FEF2F2",
+                borderColor: "#E8A6B3",
+                backgroundColor: "#FCECF0",
                 color: "#991B1B",
               }}
             >
@@ -1489,7 +1676,11 @@ export default function Ask() {
           )}
 
           {restoring && (
-            <p className="text-sm" style={{ color: MUTED_TEXT }}>
+            <p
+              className="rounded-lg p-3 text-sm"
+              style={{ color: MUTED_TEXT, backgroundColor: SOFT_BLUE }}
+              role="status"
+            >
               Restoring your previous query…
             </p>
           )}
@@ -1497,73 +1688,112 @@ export default function Ask() {
           {result && (
             <>
               <section
-                className="rounded-xl border bg-white p-5"
+                className="overflow-hidden rounded-xl border bg-white shadow-sm"
                 style={panelStyle}
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="font-semibold" style={{ color: PURPLE }}>
-                    Query Result
-                  </h2>
+                <div
+                  className="flex flex-wrap items-center justify-between gap-3 border-b p-5"
+                  style={{
+                    borderColor: BORDER,
+                    backgroundColor: "#F8F5FA",
+                  }}
+                >
+                  <div>
+                    <h2 className="font-semibold" style={{ color: PURPLE }}>
+                      Query Result
+                    </h2>
+                    <p
+                      className="mt-1 text-xs"
+                      style={{ color: MUTED_TEXT }}
+                    >
+                      Your response and its evaluation status
+                    </p>
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     {resultModeLabel && (
                       <span
-                        className="inline-block rounded-full px-2 py-1 text-xs font-semibold"
-                        style={{ color: PURPLE, backgroundColor: BORDER }}
+                        className="inline-block rounded-full px-2.5 py-1 text-xs font-semibold"
+                        style={{
+                          color: PURPLE,
+                          backgroundColor: "#E7DDED",
+                        }}
                       >
                         {resultModeLabel} mode
                       </span>
                     )}
-                    <span className="text-xs" style={{ color: MUTED_TEXT }}>
-                      Answer status
-                    </span>
                     <StatusBadge status={status} />
                   </div>
                 </div>
 
-                {insufficientEvidence ? (
-                  <div
-                    className="mt-4 rounded-lg border p-4"
-                    style={{
-                      borderColor: "#F59E0B",
-                      backgroundColor: "#FFFBEB",
-                      color: "#92400E",
-                    }}
-                  >
-                    <p className="font-bold">Insufficient Evidence</p>
-                    <p className="mt-2 text-sm leading-6">
-                      The retrieved documents do not provide enough reliable
-                      evidence to answer this question confidently. Try
-                      selecting other documents or asking a more specific
-                      question.
-                    </p>
-                    {answer && (
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
-                        {answer}
+                <div className="p-5">
+                  {insufficientEvidence ? (
+                    <div
+                      className="rounded-xl border p-4"
+                      style={{
+                        borderColor: "#E9C78A",
+                        backgroundColor: "#FFF8E9",
+                        color: "#92400E",
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg" aria-hidden="true">
+                          ⓘ
+                        </span>
+                        <p className="font-bold">Insufficient Evidence</p>
+                      </div>
+                      <p className="mt-2 text-sm leading-6">
+                        The retrieved documents do not provide enough reliable
+                        evidence to answer this question confidently. Try
+                        selecting other documents or asking a more specific
+                        question.
                       </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="mt-4 whitespace-pre-wrap text-sm leading-7">
-                    {answer || "No answer was returned by the backend."}
-                  </div>
-                )}
+                      {answer && (
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                          {answer}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      className="rounded-xl p-4 text-sm leading-7"
+                      style={{
+                        backgroundColor: "#FCFAFD",
+                        borderLeft: `3px solid ${BLUE}`,
+                        color: DARK_TEXT,
+                      }}
+                    >
+                      <div
+                        className="mb-2 text-xs font-bold uppercase tracking-wider"
+                        style={{ color: BLUE }}
+                      >
+                        Answer
+                      </div>
+                      <div className="whitespace-pre-wrap">
+                        {answer || "No answer was returned by the backend."}
+                      </div>
+                    </div>
+                  )}
 
-                {queryId && (
-                  <p className="mt-4 text-xs" style={{ color: MUTED_TEXT }}>
-                    Query ID: {queryId}
-                  </p>
-                )}
+                  {queryId && (
+                    <p
+                      className="mt-4 text-xs"
+                      style={{ color: MUTED_TEXT }}
+                    >
+                      Query ID: {queryId}
+                    </p>
+                  )}
 
-                {queryId && !String(queryId).startsWith("local-") && (
-                  <Link
-                    to={`/query/${encodeURIComponent(queryId)}`}
-                    className="mt-3 inline-block text-sm font-semibold hover:underline"
-                    style={{ color: BLUE }}
-                  >
-                    View evaluation details →
-                  </Link>
-                )}
+                  {queryId && !String(queryId).startsWith("local-") && (
+                    <Link
+                      to={`/query/${encodeURIComponent(queryId)}`}
+                      className="mt-3 inline-block rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-[#EEF3FA]"
+                      style={{ color: BLUE }}
+                    >
+                      View evaluation details →
+                    </Link>
+                  )}
+                </div>
               </section>
 
               <EvaluationSummary
@@ -1573,19 +1803,35 @@ export default function Ask() {
               />
 
               <section
-                className="rounded-xl border bg-white p-5"
+                className="rounded-xl border bg-white p-5 shadow-sm"
                 style={panelStyle}
               >
                 <button
                   type="button"
                   onClick={() => setShowEvidence((value) => !value)}
                   className="flex w-full items-center justify-between text-left"
+                  aria-expanded={showEvidence}
                 >
-                  <span className="font-semibold" style={{ color: PURPLE }}>
-                    Evidence Explorer
+                  <span>
+                    <span
+                      className="block font-semibold"
+                      style={{ color: PURPLE }}
+                    >
+                      Evidence Explorer
+                    </span>
+                    <span
+                      className="mt-1 block text-sm"
+                      style={{ color: MUTED_TEXT }}
+                    >
+                      Retrieved passages and supporting citations
+                    </span>
                   </span>
-                  <span style={{ color: PURPLE }}>
-                    {showEvidence ? "Hide" : "Show"}
+                  <span
+                    className="rounded-full px-3 py-1 text-xs font-semibold"
+                    style={{ backgroundColor: SOFT_BLUE, color: PURPLE }}
+                    aria-hidden="true"
+                  >
+                    {showEvidence ? "Hide −" : "Show +"}
                   </span>
                 </button>
 
@@ -1600,19 +1846,35 @@ export default function Ask() {
               </section>
 
               <section
-                className="rounded-xl border bg-white p-5"
+                className="rounded-xl border bg-white p-5 shadow-sm"
                 style={panelStyle}
               >
                 <button
                   type="button"
                   onClick={() => setShowDebug((value) => !value)}
                   className="flex w-full items-center justify-between text-left"
+                  aria-expanded={showDebug}
                 >
-                  <span className="font-semibold" style={{ color: PURPLE }}>
-                    Retrieval Debug Panel
+                  <span>
+                    <span
+                      className="block font-semibold"
+                      style={{ color: PURPLE }}
+                    >
+                      Retrieval Debug Panel
+                    </span>
+                    <span
+                      className="mt-1 block text-sm"
+                      style={{ color: MUTED_TEXT }}
+                    >
+                      Inspect retrieved data, timings, and attempts
+                    </span>
                   </span>
-                  <span style={{ color: PURPLE }}>
-                    {showDebug ? "Hide" : "Show"}
+                  <span
+                    className="rounded-full px-3 py-1 text-xs font-semibold"
+                    style={{ backgroundColor: LAVENDER, color: PURPLE }}
+                    aria-hidden="true"
+                  >
+                    {showDebug ? "Hide −" : "Show +"}
                   </span>
                 </button>
 

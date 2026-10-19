@@ -1,5 +1,10 @@
+
 import { useEffect, useRef, useState } from 'react'
-import { deleteDocument, getDocuments, uploadDocument } from '../../api/client'
+import {
+  deleteDocument,
+  getDocuments,
+  uploadDocument,
+} from '../../api/client'
 
 function Documents() {
   const [documents, setDocuments] = useState([])
@@ -9,12 +14,10 @@ function Documents() {
 
   const fileInputRef = useRef(null)
 
-  // Open the file picker
   const handleUploadClick = () => {
     fileInputRef.current?.click()
   }
 
-  // Validate and select a PDF file
   const handleFileSelection = (file) => {
     if (!file) return
 
@@ -30,18 +33,15 @@ function Documents() {
     setSelectedFile(file)
   }
 
-  // Handle file picker selection
   const handleFileChange = (event) => {
     handleFileSelection(event.target.files[0])
     event.target.value = ''
   }
 
-  // Handle drag over
   const handleDragOver = (event) => {
     event.preventDefault()
   }
 
-  // Handle dropped file
   const handleDrop = (event) => {
     event.preventDefault()
     handleFileSelection(event.dataTransfer.files[0])
@@ -55,7 +55,6 @@ function Documents() {
         alert(`Failed to load documents: ${error.message}`)
       })
 
-  // Upload, extract, chunk and embed the selected PDF
   const handleUpload = async () => {
     if (!selectedFile) {
       alert('Please select a PDF file first.')
@@ -75,12 +74,10 @@ function Documents() {
     }
   }
 
-  // Open delete confirmation
   const handleDeleteClick = (document) => {
     setDocumentToDelete(document)
   }
 
-  // Delete the document and its chunks on the server
   const confirmDelete = async () => {
     if (!documentToDelete) return
 
@@ -106,181 +103,244 @@ function Documents() {
   }, [])
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8">
-
+    <div className="mx-auto w-full max-w-6xl space-y-7">
       {/* Page Header */}
-      <div>
-        <h1
-          className="text-3xl font-bold"
-          style={{ color: '#554188' }}
-        >
-          Documents
-        </h1>
-
-        <p className="mt-2" style={{ color: '#555555' }}>
-          Manage your knowledge documents.
-        </p>
-      </div>
-
-      {/* Upload Section */}
-      <section>
-        <h2
-          className="mb-3 text-lg font-semibold"
-          style={{ color: '#554188' }}
-        >
-          Upload Document
-        </h2>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,application/pdf"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-
-        <div
-          onClick={handleUploadClick}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              handleUploadClick()
-            }
-          }}
-          className="cursor-pointer rounded-2xl border-2 border-dashed p-12 text-center transition hover:bg-[#F0EAF2]"
-          style={{
-            borderColor: '#7080DA',
-            backgroundColor: '#F5F5F4',
-          }}
-        >
-          <div className="mx-auto max-w-md">
-            <div className="mb-4 text-4xl">📄</div>
-
-            <p
-              className="text-lg font-semibold"
-              style={{ color: '#554188' }}
-            >
-              Drop your PDF here
-            </p>
-
-            <p className="mt-2 text-sm" style={{ color: '#555555' }}>
-              or click to browse
-            </p>
-
-            <p className="mt-4 text-xs" style={{ color: '#8A8080' }}>
-              PDF files only · Maximum file size will be enforced by the backend
-            </p>
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#51416B]">
+            <span className="h-2 w-2 rounded-full bg-[#DB88A4]" />
+            Knowledge Base
           </div>
-        </div>
 
-        {/* Selected File Details */}
-        {selectedFile && (
-          <div
-            className="mt-4 rounded-xl border p-5"
-            style={{
-              borderColor: '#A8C3D4',
-              backgroundColor: '#FFFFFF',
-            }}
-          >
-            <p className="font-semibold" style={{ color: '#554188' }}>
-              Selected file
-            </p>
+          <h1 className="text-3xl font-bold tracking-tight text-[#29243A]">
+            Documents
+          </h1>
 
-            <p
-              className="mt-1 break-all text-sm"
-              style={{ color: '#555555' }}
-            >
-              {selectedFile.name}
-            </p>
-
-            <p className="mt-1 text-xs" style={{ color: '#888888' }}>
-              {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-            </p>
-
-            <button
-              type="button"
-              onClick={handleUpload}
-              disabled={busy}
-              className="mt-4 rounded-lg px-5 py-2 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ backgroundColor: '#554188' }}
-            >
-              {busy ? 'Uploading and indexing…' : 'Upload PDF'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedFile(null)}
-              disabled={busy}
-              className="ml-3 mt-4 rounded-lg border px-5 py-2 font-semibold transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-              style={{
-                borderColor: '#D5CEDB',
-                color: '#554188',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Documents Table */}
-      <section>
-        <div className="mb-4">
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: '#554188' }}
-          >
-            Your Documents
-          </h2>
-
-          <p className="mt-1 text-sm" style={{ color: '#777777' }}>
-            Documents available in your knowledge base.
+          <p className="mt-2 text-sm text-[#817789]">
+            Manage the documents that power your RAG knowledge base.
           </p>
         </div>
 
-        <div
-          className="overflow-x-auto rounded-xl border bg-white"
-          style={{ borderColor: '#E0DDE1' }}
-        >
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#C8D9EB] bg-[#DCE8F5] px-4 py-2 text-sm font-medium text-[#51416B]">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#D5E3EF] bg-white text-[#738FBD]">
+            ▤
+          </span>
+          {documents.length} {documents.length === 1 ? 'document' : 'documents'}
+        </div>
+      </header>
+
+      {/* Upload Section */}
+      <section className="overflow-hidden rounded-2xl border border-[#D8CDE5] bg-[#FCFAFD] shadow-sm">
+        <div className="border-b border-[#D8CDE5] bg-[#EAE0F0] px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#D4C4E0] bg-white text-xl text-[#51416B]">
+              ↑
+            </div>
+
+            <div>
+              <h2 className="text-base font-semibold text-[#29243A]">
+                Upload Document
+              </h2>
+              <p className="mt-0.5 text-xs text-[#665A75]">
+                Add a PDF to your searchable knowledge base.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#F8F5FA] p-5 sm:p-6">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,application/pdf"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          <div
+            onClick={handleUploadClick}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            role="button"
+            tabIndex={0}
+            aria-label="Choose or drop a PDF file to upload"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleUploadClick()
+              }
+            }}
+            className="group cursor-pointer rounded-2xl border-2 border-dashed border-[#91B3D1] bg-[#DCE8F5] px-4 py-9 text-center transition-colors duration-200 hover:border-[#738FBD] hover:bg-[#D2E0F1] sm:py-11"
+          >
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#C8D9EB] bg-white text-2xl text-[#51416B] shadow-sm transition-transform duration-200 group-hover:-translate-y-0.5">
+              ⇧
+            </div>
+
+            <p className="mt-4 text-base font-semibold text-[#29243A]">
+              Drop your PDF here
+            </p>
+
+            <p className="mt-1.5 text-sm text-[#51485B]">
+              or{' '}
+              <span className="font-semibold text-[#51416B] underline decoration-[#DB88A4] underline-offset-4">
+                click to browse
+              </span>
+            </p>
+
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#C8D9EB] bg-white px-3 py-1.5 text-xs text-[#665A75]">
+              <span className="font-semibold text-[#738FBD]">PDF</span>
+              <span>Maximum file size enforced by the backend</span>
+            </div>
+          </div>
+
+          {/* Selected File Details */}
+          {selectedFile && (
+            <div className="mt-4 rounded-xl border border-[#D8C4E3] bg-[#EAE0F0] p-4 sm:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#D4C4E0] bg-white text-xl text-[#51416B]">
+                    ▤
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#665A75]">
+                      Selected file
+                    </p>
+
+                    <p className="mt-1 break-all text-sm font-semibold text-[#29243A]">
+                      {selectedFile.name}
+                    </p>
+
+                    <p className="mt-1 text-xs text-[#665A75]">
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleUpload}
+                    disabled={busy}
+                    className="rounded-lg bg-[#51416B] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#29243A] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {busy ? 'Uploading and indexing…' : 'Upload PDF'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFile(null)}
+                    disabled={busy}
+                    className="rounded-lg border border-[#D4C4E0] bg-white px-4 py-2.5 text-sm font-semibold text-[#51416B] transition-colors hover:bg-[#F6DDE6] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {busy && (
+                <div
+                  className="pipeline-progress-track mt-4"
+                  role="progressbar"
+                  aria-label="Document upload and indexing in progress"
+                  aria-valuetext="Uploading and indexing"
+                >
+                  <div
+                    className="pipeline-progress-fill"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              )}
+
+              {busy && (
+                <p className="mt-2 text-xs text-[#665A75]">
+                  Uploading your PDF and processing it. Please wait…
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Documents Table */}
+      <section className="overflow-hidden rounded-2xl border border-[#D8CDE5] bg-[#FCFAFD] shadow-sm">
+        <div className="flex flex-col justify-between gap-3 border-b border-[#D8CDE5] bg-[#EAE0F0] px-5 py-4 sm:flex-row sm:items-center sm:px-6">
+          <div>
+            <h2 className="text-base font-semibold text-[#29243A]">
+              Your Documents
+            </h2>
+
+            <p className="mt-1 text-xs text-[#665A75]">
+              Documents available in your knowledge base.
+            </p>
+          </div>
+
+          <span className="w-fit rounded-lg border border-[#D4C4E0] bg-white px-3 py-1.5 text-xs font-semibold text-[#51416B]">
+            {documents.length} {documents.length === 1 ? 'item' : 'items'}
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
           <table className="w-full min-w-[650px] text-left text-sm">
-            <thead style={{ backgroundColor: '#F0EAF2' }}>
-              <tr style={{ color: '#554188' }}>
-                <th className="px-5 py-4 font-semibold">Document</th>
-                <th className="px-5 py-4 font-semibold">Pages</th>
-                <th className="px-5 py-4 font-semibold">Chunks</th>
-                <th className="px-5 py-4 font-semibold">Upload Date</th>
-                <th className="px-5 py-4 font-semibold">Actions</th>
+            <thead className="bg-[#DCE8F5] text-[#29243A]">
+              <tr>
+                <th scope="col" className="px-5 py-3.5 font-semibold sm:px-6">
+                  Document
+                </th>
+                <th scope="col" className="px-5 py-3.5 font-semibold">
+                  Pages
+                </th>
+                <th scope="col" className="px-5 py-3.5 font-semibold">
+                  Chunks
+                </th>
+                <th scope="col" className="px-5 py-3.5 font-semibold">
+                  Upload Date
+                </th>
+                <th scope="col" className="px-5 py-3.5 font-semibold">
+                  Actions
+                </th>
               </tr>
             </thead>
 
-            <tbody>
-              {documents.map((document) => (
+            <tbody className="divide-y divide-[#E5DBE6]">
+              {documents.map((document, index) => (
                 <tr
                   key={document.id}
-                  className="border-t"
-                  style={{
-                    borderColor: '#E0DDE1',
-                    color: '#555555',
-                  }}
+                  className={`transition-colors hover:bg-[#F6DDE6] ${
+                    index % 2 === 0 ? 'bg-white' : 'bg-[#F5F0F8]'
+                  }`}
                 >
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-4 sm:px-6">
                     <div className="flex items-center gap-3">
-                      <span className="text-xl">📄</span>
-                      <span className="font-medium" style={{ color: '#554188' }}>
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg ${
+                          index % 3 === 0
+                            ? 'border-[#C8D9EB] bg-[#DCE8F5] text-[#51416B]'
+                            : index % 3 === 1
+                              ? 'border-[#D8C4E3] bg-[#EAE0F0] text-[#51416B]'
+                              : 'border-[#F0D0DD] bg-[#F6DDE6] text-[#A84665]'
+                        }`}
+                      >
+                        ▤
+                      </div>
+
+                      <span className="max-w-xs break-all font-medium text-[#29243A]">
                         {document.name}
                       </span>
                     </div>
                   </td>
 
-                  <td className="px-5 py-4">{document.pages}</td>
-
-                  <td className="px-5 py-4">{document.chunks}</td>
+                  <td className="px-5 py-4 text-[#51485B]">
+                    {document.pages}
+                  </td>
 
                   <td className="px-5 py-4">
+                    <span className="inline-flex min-w-10 items-center justify-center rounded-lg border border-[#C8D9EB] bg-[#DCE8F5] px-2.5 py-1 font-semibold text-[#51416B]">
+                      {document.chunks}
+                    </span>
+                  </td>
+
+                  <td className="whitespace-nowrap px-5 py-4 text-[#665A75]">
                     {new Date(document.created_at).toLocaleDateString()}
                   </td>
 
@@ -288,11 +348,8 @@ function Documents() {
                     <button
                       type="button"
                       onClick={() => handleDeleteClick(document)}
-                      className="rounded-lg border px-3 py-2 font-medium transition hover:bg-red-50"
-                      style={{
-                        borderColor: '#E7B8C2',
-                        color: '#B4233D',
-                      }}
+                      disabled={busy}
+                      className="rounded-lg border border-[#EBC5D3] bg-[#F6DDE6] px-3 py-2 text-xs font-semibold text-[#A84665] transition-colors hover:bg-[#F0C9D8] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Delete
                     </button>
@@ -302,59 +359,77 @@ function Documents() {
 
               {documents.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="px-5 py-10 text-center"
-                    style={{ color: '#777777' }}
-                  >
-                    No documents available. Upload a PDF to get started.
+                  <td colSpan={5} className="bg-[#F5F0F8] px-5 py-14 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#C8D9EB] bg-[#DCE8F5] text-2xl text-[#51416B]">
+                      ▤
+                    </div>
+
+                    <p className="mt-4 text-sm font-semibold text-[#29243A]">
+                      No documents available
+                    </p>
+
+                    <p className="mt-1 text-xs text-[#665A75]">
+                      Upload a PDF to start building your knowledge base.
+                    </p>
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {documents.length > 0 && (
+          <div className="border-t border-[#D8CDE5] bg-[#EAE0F0] px-5 py-3 text-xs text-[#665A75] sm:px-6">
+            Your uploaded documents are available for retrieval and evaluation.
+          </div>
+        )}
       </section>
 
       {/* Delete Confirmation Dialog */}
       {documentToDelete && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setDocumentToDelete(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#29243A]/50 p-4 backdrop-blur-[3px]"
+          onClick={() => {
+            if (!busy) setDocumentToDelete(null)
+          }}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-2xl border border-[#D8CDE5] bg-[#FCFAFD] p-6 shadow-xl sm:p-7"
             onClick={(event) => event.stopPropagation()}
           >
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#EBC5D3] bg-[#F6DDE6] text-xl text-[#BD4357]">
+              !
+            </div>
+
             <h2
               id="delete-dialog-title"
-              className="text-xl font-bold"
-              style={{ color: '#554188' }}
+              className="mt-4 text-xl font-bold text-[#29243A]"
             >
               Delete document?
             </h2>
 
-            <p className="mt-3 text-sm" style={{ color: '#555555' }}>
+            <p className="mt-3 break-words text-sm leading-6 text-[#51485B]">
               Are you sure you want to remove{' '}
-              <strong>{documentToDelete.name}</strong>?
+              <strong className="font-semibold text-[#29243A]">
+                {documentToDelete.name}
+              </strong>
+              ?
             </p>
 
-            <p className="mt-2 text-xs" style={{ color: '#888888' }}>
-              The document and all of its indexed chunks will be permanently deleted.
+            <p className="mt-2 text-xs leading-5 text-[#665A75]">
+              The document and all its indexed chunks will be permanently
+              deleted. This action cannot be undone.
             </p>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <button
                 type="button"
                 onClick={() => setDocumentToDelete(null)}
-                className="rounded-lg border px-4 py-2 font-semibold"
-                style={{
-                  borderColor: '#D5CEDB',
-                  color: '#554188',
-                }}
+                disabled={busy}
+                className="rounded-lg border border-[#D4C4E0] bg-white px-4 py-2.5 text-sm font-semibold text-[#51416B] transition-colors hover:bg-[#EAE0F0] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -363,8 +438,7 @@ function Documents() {
                 type="button"
                 onClick={confirmDelete}
                 disabled={busy}
-                className="rounded-lg px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ backgroundColor: '#B4233D' }}
+                className="rounded-lg bg-[#BD4357] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#A93449] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy ? 'Deleting…' : 'Confirm Delete'}
               </button>
