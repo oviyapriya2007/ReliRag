@@ -9,7 +9,6 @@ const PURPLE = '#554188'
 const BLUE = '#738fbd'
 const PINK = '#db88a4'
 const BORDER = '#E5DBE6'
-const MUTED = '#57534E'
 const GREEN = '#166534'
 const RED = '#991B1B'
 

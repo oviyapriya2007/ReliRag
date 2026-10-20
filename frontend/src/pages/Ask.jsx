@@ -7,10 +7,6 @@ import {
   getQuery,
   runQuery,
 } from "../../api/client";
-import {
-  buildCorrectionDemoPayload,
-  isCorrectionDemoQuestion,
-} from "../demo/correctionDemo";
 
 const PURPLE = "#55416F";
 const BLUE = "#738FBD";
@@ -46,7 +42,6 @@ const DEFAULT_MODE = "reli";
 
 const DEFAULT_SETTINGS = {
   topK: 5,
-  evaluatorThreshold: 0.7,
   similarityGate: 0.5,
 };
 
@@ -626,13 +621,10 @@ function IllustrativePipelineProgress({ reducedMotion }) {
   const stageCount = PIPELINE_STAGES.length;
   const [activeStage, setActiveStage] = useState(0);
 
+  // Reduced motion shows the last stage via focusStage below; the parent remounts this
+  // component when reducedMotion changes, so cycling always restarts from stage 0.
   useEffect(() => {
-    if (reducedMotion) {
-      setActiveStage(stageCount - 1);
-      return undefined;
-    }
-
-    setActiveStage(0);
+    if (reducedMotion) return undefined;
 
     const interval = window.setInterval(() => {
       setActiveStage((current) =>
@@ -875,9 +867,13 @@ function CorrectionPipeline({ loading, result, error, mode }) {
           Number(result.final_attempt_number)
     ) || attempts[attempts.length - 1];
 
-  const evaluation = finalAttempt?.evaluation;
-  const evaluated = Boolean(evaluation);
   const correctionAttempted = attempts.length > 1;
+  // "Evaluate" reports attempt 1; "Re-evaluate" reports the correction attempt that ran,
+  // whichever attempt was finally selected.
+  const firstEvaluation = (attempts[0] ?? finalAttempt)?.evaluation;
+  const retryEvaluation = correctionAttempted
+    ? attempts[attempts.length - 1]?.evaluation
+    : undefined;
 
   function getResultStageState(index) {
     if (error) return index === 0 ? "failed" : "pending";
@@ -891,8 +887,8 @@ function CorrectionPipeline({ loading, result, error, mode }) {
     }
 
     if (index === 2) {
-      if (!evaluated) return "unknown";
-      return evaluation?.passed === false ? "failed" : "complete";
+      if (!firstEvaluation) return "unknown";
+      return firstEvaluation.passed === false ? "failed" : "complete";
     }
 
     if (index === 3) {
@@ -909,8 +905,8 @@ function CorrectionPipeline({ loading, result, error, mode }) {
         return "skipped";
       }
 
-      if (!evaluated) return "unknown";
-      return evaluation?.passed === false ? "failed" : "complete";
+      if (!retryEvaluation) return "unknown";
+      return retryEvaluation.passed === false ? "failed" : "complete";
     }
 
     return "pending";
@@ -923,13 +919,13 @@ function CorrectionPipeline({ loading, result, error, mode }) {
 
     if (state === "complete") {
       if (index === 2) {
-        return evaluation?.passed === true
+        return firstEvaluation?.passed === true
           ? "Evaluation passed"
           : "Evaluation completed";
       }
 
       if (index === 3) return "Retry found in result";
-      if (index === 4) return "Final evaluation received";
+      if (index === 4) return "Correction evaluation received";
 
       return "Completed";
     }
@@ -973,7 +969,10 @@ function CorrectionPipeline({ loading, result, error, mode }) {
       </div>
 
       {loading ? (
-        <IllustrativePipelineProgress reducedMotion={reducedMotion} />
+        <IllustrativePipelineProgress
+          key={reducedMotion ? "reduced" : "animated"}
+          reducedMotion={reducedMotion}
+        />
       ) : (
         <PipelineStageGrid
           loading={false}
@@ -1144,122 +1143,7 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
       </div>
 
       <p className="mt-3 text-xs" style={{ color: MUTED_TEXT }}>
-        {evaluation?.feedback?.startsWith("[DEMO")
-          ? "Scripted / demo scores — not a real Claude evaluation."
-          : "Scores and verdicts are the backend evaluator's saved results. They are not recomputed in the browser."}
-      </p>
-    </section>
-  );
-}
-
-function ScriptedCorrectionTrail({ result }) {
-  const attempt1 = result?.attempts?.[0];
-  const attempt2 = result?.attempts?.[1];
-
-  if (!attempt1 || !attempt2) return null;
-
-  return (
-    <section
-      className="rounded-xl border bg-white p-5"
-      style={panelStyle}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold" style={{ color: PURPLE }}>
-          Correction trail
-        </h2>
-
-        <span
-          className="rounded-full px-3 py-1 text-xs font-bold"
-          style={{
-            color: "#92400E",
-            backgroundColor: "#FEF3C7",
-          }}
-        >
-          DEMO / SIMULATED
-        </span>
-      </div>
-
-      <p className="mt-2 text-sm" style={{ color: MUTED_TEXT }}>
-        Scripted walkthrough for this question only. Not saved to the
-        database and not produced by Claude.
-      </p>
-
-      <ol className="mt-4 space-y-3">
-        <li
-          className="rounded-lg border p-4"
-          style={{ borderColor: "#FCA5A5" }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-800">
-              Attempt 1
-            </p>
-
-            <span
-              className="rounded-full px-2 py-1 text-xs font-semibold"
-              style={{
-                color: "#991B1B",
-                backgroundColor: "#FEE2E2",
-              }}
-            >
-              FAILED · missing_info
-            </span>
-          </div>
-
-          <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-            {attempt1.answer}
-          </pre>
-        </li>
-
-        <li
-          className="rounded-lg border p-4"
-          style={{ borderColor: BLUE }}
-        >
-          <p className="text-sm font-semibold text-gray-800">
-            Correction query (rewrite)
-          </p>
-
-          <pre
-            className="mt-3 whitespace-pre-wrap rounded-lg p-3 text-sm leading-6 text-gray-700"
-            style={{ backgroundColor: "#F0F5FF" }}
-          >
-            {result.correction_query || "No correction query provided."}
-          </pre>
-        </li>
-
-        <li
-          className="rounded-lg border p-4"
-          style={{ borderColor: "#86EFAC" }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-800">
-              Attempt 2
-            </p>
-
-            <span
-              className="rounded-full px-2 py-1 text-xs font-semibold"
-              style={{
-                color: "#166534",
-                backgroundColor: "#DCFCE7",
-              }}
-            >
-              PASSED
-            </span>
-          </div>
-
-          <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-            {attempt2.answer}
-          </pre>
-        </li>
-      </ol>
-
-      <p className="mt-3 text-xs" style={{ color: MUTED_TEXT }}>
-        Full labelled view also available on{" "}
-        <Link
-          to="/correction-demo"
-          className="font-semibold underline"
-        >
-          Correction Demo
-        </Link>.
+        Scores and verdicts are the backend evaluator's saved results. They are not recomputed in the browser.
       </p>
     </section>
   );
@@ -1588,24 +1472,6 @@ export default function Ask() {
     setShowDebug(false);
 
     try {
-      // Exact-match demo override only. Other questions use live Attest.
-      if (isCorrectionDemoQuestion(submittedQuestion)) {
-        await new Promise((resolve) => window.setTimeout(resolve, 9000));
-
-        const data = buildCorrectionDemoPayload();
-
-        setResult(data);
-        setQueryId(null);
-
-        recordHistory(
-          `demo-${Date.now()}`,
-          submittedQuestion,
-          data
-        );
-
-        return;
-      }
-
       let topK = 5;
 
       try {
@@ -1966,18 +1832,6 @@ export default function Ask() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {result.demo && (
-                      <span
-                        className="inline-block rounded-full px-2 py-1 text-xs font-bold"
-                        style={{
-                          color: "#92400E",
-                          backgroundColor: "#FEF3C7",
-                        }}
-                      >
-                        DEMO / SIMULATED
-                      </span>
-                    )}
-
                     {resultModeLabel && (
                       <span
                         className="inline-block rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -1995,21 +1849,6 @@ export default function Ask() {
                 </div>
 
                 <div className="p-5">
-                  {result.demo && (
-                    <p
-                      className="mb-4 rounded-lg border px-3 py-2 text-xs leading-5"
-                      style={{
-                        borderColor: "#F0D7A0",
-                        backgroundColor: "#FFFBEB",
-                        color: "#92400E",
-                      }}
-                    >
-                      Scripted correction demo for this exact question only.
-                      No database write and no Claude call. Other questions
-                      still use the live Attest pipeline.
-                    </p>
-                  )}
-
                   {insufficientEvidence ? (
                     <div
                       className="rounded-xl border p-4"
@@ -2087,10 +1926,6 @@ export default function Ask() {
                 attempt={reportedAttempt}
                 attemptCount={attempts.length}
               />
-
-              {result.demo && (
-                <ScriptedCorrectionTrail result={result} />
-              )}
 
               <section
                 className="rounded-xl border bg-white p-5 shadow-sm"

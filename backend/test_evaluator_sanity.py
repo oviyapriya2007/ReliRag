@@ -190,12 +190,13 @@ class SupportCheckTest(unittest.TestCase):
 
 
 class KnownLimitationTest(unittest.TestCase):
-    """Support checks are lexical, so they cannot prove entailment.
+    """Support checks cannot prove entailment.
 
-    The evaluator checks that an evidence quote occurs in the cited chunk and shares the
-    claim's numbers, negations, and most of its content words. A false claim that reuses the
-    quote's words with a different subject still passes those checks. The sanity runner
-    reports this as a semantic-support failure for negative cases.
+    A false claim that reuses a quote's words with a different subject ("UDP" for a quote that
+    chunk 97 states about TCP) is caught by the subject check, but only as partially supported:
+    the chunk's merged heading ("TCP and UDP TCP provides ...") names both protocols in the same
+    sentence, so the subject is ambiguous to a deterministic check. The sanity runner still
+    reports it as a semantic-support failure, since this negative case allows only unsupported.
     """
 
     def udp_supported_with_genuine_quote(self):
@@ -204,13 +205,13 @@ class KnownLimitationTest(unittest.TestCase):
                   "provides a reliable, ordered byte stream"),
         ]))[0]
 
-    def test_genuine_quote_passes_presence_check_without_entailment(self):
+    def test_swapped_subject_is_not_accepted_as_supported(self):
         result = self.udp_supported_with_genuine_quote()
 
-        self.assertEqual(result.claims[0].verdict, SUPPORTED)
-        self.assertIsNone(result.claims[0].evidence_error)
-        self.assertEqual(result.faithfulness, 1.0)
-        self.assertTrue(result.passed)
+        self.assertEqual(result.claims[0].verdict, PARTIALLY_SUPPORTED)
+        self.assertIn("about tcp", result.claims[0].evidence_error)
+        self.assertEqual(result.faithfulness, 0.5)
+        self.assertFalse(result.passed)
         self.assertEqual(failed(sanity.validate_result(result, CHUNKS)), [])
 
     def test_sanity_runner_flags_it_as_semantic_support_failure(self):
@@ -218,8 +219,7 @@ class KnownLimitationTest(unittest.TestCase):
 
         semantic = failed(sanity.check_negative_case(UDP_CASE, result), sanity.SEMANTIC_SUPPORT)
         self.assertEqual(len(semantic), 1)
-        self.assertIn("not proof of entailment", semantic[0].detail)
-        self.assertIn("chunk 97", semantic[0].detail)
+        self.assertIn("partially_supported", semantic[0].detail)
 
     def test_contradicted_claim_judged_unsupported_passes_semantic_check(self):
         result, _ = evaluate(reply([claim("UDP guarantees delivery.", UNSUPPORTED, None, None)]))
@@ -454,7 +454,7 @@ class SanityRunnerTest(unittest.TestCase):
         self.assertEqual(set(records), {c.name for c in sanity.NEGATIVE_CASES})
 
         udp = records["udp_guarantees_delivery"]
-        self.assertEqual(udp["outcome"], sanity.EVALUATED_PASS)
+        self.assertEqual(udp["outcome"], sanity.EVALUATED_FAIL)
         self.assertIn(sanity.SEMANTIC_SUPPORT, [c["kind"] for c in udp["failed_checks"]])
 
         wrong = records["wrong_evidence"]

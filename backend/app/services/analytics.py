@@ -125,14 +125,18 @@ def build_summary(
         .group_by(Answer.query_id)
         .subquery("evaluation")
     )
+    # All three averages are over the same queries (any recorded Claude time); a part with no
+    # recorded time (e.g. no evaluation after a refusal) counts as 0 ms, so generation plus
+    # evaluation equals the total.
     recorded = or_(generation.c.ms.is_not(None), evaluation.c.ms.is_not(None))
-    total_ms = func.coalesce(generation.c.ms, 0) + func.coalesce(evaluation.c.ms, 0)
+    generation_ms = func.coalesce(generation.c.ms, 0)
+    evaluation_ms = func.coalesce(evaluation.c.ms, 0)
     latency = _by_mode(db, select(
         scope.c.mode,
         func.count(case((recorded, 1))).label("queries"),
-        func.avg(generation.c.ms).label("generation_ms"),
-        func.avg(evaluation.c.ms).label("evaluation_ms"),
-        func.avg(case((recorded, total_ms))).label("total_ms"),
+        func.avg(case((recorded, generation_ms))).label("generation_ms"),
+        func.avg(case((recorded, evaluation_ms))).label("evaluation_ms"),
+        func.avg(case((recorded, generation_ms + evaluation_ms))).label("total_ms"),
     ).select_from(scope)
         .outerjoin(generation, generation.c.query_id == scope.c.id)
         .outerjoin(evaluation, evaluation.c.query_id == scope.c.id)
@@ -220,14 +224,19 @@ def _mode_summary(
     first_row = first_stats.get(mode)
     claim_row = claims.get(mode)
     latency_row = latency.get(mode)
+    final_row = final_stats.get(mode)
     evaluated = first_row.evaluations if first_row else 0
     passed = int(first_row.passed or 0) if first_row else 0
+    final_evaluated = final_row.evaluations if final_row else 0
+    final_passed = int(final_row.passed or 0) if final_row else 0
     return ModeSummary(
         questions=question_row.questions if question_row else 0,
         first_pass=RateMetric(count=passed, total=evaluated, rate=_rate(passed, evaluated)),
+        final_pass=RateMetric(count=final_passed, total=final_evaluated,
+                              rate=_rate(final_passed, final_evaluated)),
         insufficient_evidence=int(question_row.insufficient_evidence or 0) if question_row else 0,
         first_attempt_scores=_scores(first_row),
-        final_scores=_scores(final_stats.get(mode)),
+        final_scores=_scores(final_row),
         unsupported_claims=int(claim_row.unsupported or 0) if claim_row else 0,
         partially_supported_claims=int(claim_row.partial or 0) if claim_row else 0,
         latency=LatencySummary(

@@ -151,14 +151,45 @@ def claims_to_reject(evaluation: EvaluationLike | None, *,
 def supporting_chunks(
     chunks: Sequence[RetrievedChunk], claims: Iterable[ClaimLike]
 ) -> list[RetrievedChunk]:
-    """The `chunks` that verified evidence points to, in their original order.
+    """The `chunks` that verified evidence points to, in their original order, each once.
 
-    A chunk counts when it is the evidence of a supported or partially supported claim; the
-    evaluator only keeps evidence whose quote was found in that chunk.
+    A chunk counts when it is the main or additional evidence of a supported or partially
+    supported claim, or a verified passage that contradicts one; the evaluator only keeps
+    evidence whose quote was found in that chunk. Stored claims carry only main evidence.
     """
-    evidence = {getattr(claim, "evidence_chunk_id", None) for claim in claims
-                if claim.verdict in (SUPPORTED, PARTIALLY_SUPPORTED)}
+    evidence: set[int | None] = set()
+    for claim in claims:
+        if claim.verdict not in (SUPPORTED, PARTIALLY_SUPPORTED):
+            continue
+        evidence.add(getattr(claim, "evidence_chunk_id", None))
+        for chunk_id, _ in (*getattr(claim, "additional_evidence", ()),
+                            *getattr(claim, "conflicting_evidence", ())):
+            evidence.add(chunk_id)
     return [chunk for chunk in chunks if chunk.chunk_id in evidence]
+
+
+def carry_over_chunks(
+    chunks: Sequence[RetrievedChunk], evaluation: EvaluationLike | None, *,
+    threshold: float | None = None,
+) -> list[RetrievedChunk]:
+    """The attempt's chunks a REWRITE retry keeps: its verified evidence first (see
+    `supporting_chunks`), then, when the evaluator judged the passages adequate (context
+    relevance at least `threshold`), every other chunk in rank order.
+
+    Adequate passages can hold a part of the question the answer left out, which the new
+    retrieval might not return; weak passages are not kept unless they back a claim.
+    `threshold=None` uses EVALUATOR_PASS_THRESHOLD.
+    """
+    if evaluation is None:
+        return []
+    if threshold is None:
+        threshold = settings.evaluator_pass_threshold
+    kept = supporting_chunks(chunks, getattr(evaluation, "claims", ()))
+    context = evaluation.context_relevance
+    if context is None or not math.isfinite(context) or context < threshold:
+        return kept
+    ids = {chunk.chunk_id for chunk in kept}
+    return [*kept, *(chunk for chunk in chunks if chunk.chunk_id not in ids)]
 
 
 def describe_failures(failure_types: str | Sequence[str] | None) -> str:

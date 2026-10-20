@@ -1,0 +1,13 @@
+{
+  "threshold": 0.7,
+  "cases": [
+    {"name": "all exactly at threshold", "faithfulness": 0.7, "answer_relevance": 0.7, "context_relevance": 0.7, "passed": true, "failure_type": null},
+    {"name": "all above threshold", "faithfulness": 1.0, "answer_relevance": 0.71, "context_relevance": 0.85, "passed": true, "failure_type": null},
+    {"name": "between 70 and 80 percent", "faithfulness": 0.75, "answer_relevance": 0.79, "context_relevance": 0.75, "passed": true, "failure_type": null},
+    {"name": "faithfulness just below", "faithfulness": 0.69, "answer_relevance": 0.9, "context_relevance": 0.9, "passed": false, "failure_type": "unsupported_claim"},
+    {"name": "answer relevance just below", "faithfulness": 0.9, "answer_relevance": 0.6999999, "context_relevance": 0.9, "passed": false, "failure_type": "missing_info"},
+    {"name": "context relevance just below", "faithfulness": 0.9, "answer_relevance": 0.9, "context_relevance": 0.69, "passed": false, "failure_type": "irrelevant_retrieval"},
+    {"name": "first failing score sets the failure type", "faithfulness": 0.5, "answer_relevance": 0.5, "context_relevance": 0.5, "passed": false, "failure_type": "unsupported_claim"},
+    {"name": "zero scores", "faithfulness": 0.0, "answer_relevance": 0.0, "context_relevance": 0.0, "passed": false, "failure_type": "unsupported_claim"}
+  ]
+}

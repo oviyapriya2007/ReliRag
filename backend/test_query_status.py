@@ -605,7 +605,7 @@ class QueryStatusTest(unittest.TestCase):
 
     def test_basic_query_stores_the_final_attempt_it_reports(self):
         expected_keys = {"query_id", "question", "mode", "created_at", "status", "final_answer",
-                         "final_attempt_number", "attempts"}
+                         "final_attempt_number", "selection_reason", "attempts"}
         for similarity, claude_text, status in ((0.9, ANSWER_TEXT, ANSWERED),
                                                 (0.9, INSUFFICIENT_EVIDENCE, INSUFFICIENT_EVIDENCE),
                                                 (0.05, None, INSUFFICIENT_EVIDENCE)):

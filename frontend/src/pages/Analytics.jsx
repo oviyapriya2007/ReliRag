@@ -234,35 +234,31 @@ function Section({ title, description, children, icon }) {
 
 function Analytics() {
   const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
+  // The first load starts on mount (outside mock mode), so it begins as loading.
+  const [loading, setLoading] = useState(!USE_MOCK)
   const [error, setError] = useState('')
   const [benchmarkRunId, setBenchmarkRunId] = useState('')
   const [topDocuments, setTopDocuments] = useState('5')
 
-  async function loadAnalytics(filters = {}) {
-    const runId = filters.benchmarkRunId ?? ''
-    const documentLimit = Number(filters.topDocuments ?? 5)
+  function fetchAnalytics(filters = {}) {
+    return getAnalyticsSummary({
+      benchmarkRunId: filters.benchmarkRunId ?? '',
+      topDocuments: Number(filters.topDocuments ?? 5),
+    })
+      .then((result) => setData(getObject(result)))
+      .catch((err) => setError(err?.message || 'Failed to load analytics.'))
+      .finally(() => setLoading(false))
+  }
 
+  function loadAnalytics(filters = {}) {
     setLoading(true)
     setError('')
-
-    try {
-      const result = await getAnalyticsSummary({
-        benchmarkRunId: runId,
-        topDocuments: documentLimit,
-      })
-
-      setData(getObject(result))
-    } catch (err) {
-      setError(err?.message || 'Failed to load analytics.')
-    } finally {
-      setLoading(false)
-    }
+    return fetchAnalytics(filters)
   }
 
   useEffect(() => {
     if (!USE_MOCK) {
-      loadAnalytics()
+      fetchAnalytics()
     }
   }, [])
 
@@ -646,6 +642,7 @@ function Analytics() {
                 },
               ].map(({ name, mode, accent, tint }) => {
                 const first = getObject(mode.first_pass)
+                const final = getObject(mode.final_pass)
 
                 return (
                   <article
@@ -685,6 +682,12 @@ function Analytics() {
                     </p>
 
                     <div className="mt-4 space-y-2 border-t border-black/5 pt-4 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-stone-500">Final answers passed</span>
+                        <strong className="text-stone-800">
+                          {formatCount(final.count)} / {formatCount(final.total)} ({formatPercent(final.rate)})
+                        </strong>
+                      </div>
                       <div className="flex justify-between gap-3">
                         <span className="text-stone-500">Questions recorded</span>
                         <strong className="text-stone-800">{formatCount(mode.questions)}</strong>
@@ -727,7 +730,7 @@ function Analytics() {
               <StatCard
                 label="Successful corrections"
                 value={formatCount(corrections.successful)}
-                note="Second attempt passed its evaluation"
+                note="Second attempt reported as the final answer and passed"
                 color="#27845A"
                 icon="✓"
                 tint="#EFF7F2"

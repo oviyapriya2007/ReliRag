@@ -37,6 +37,8 @@ DEFAULT_TIMEOUT_SECONDS = 300.0
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 
 VERDICTS = ("supported", "partially_supported", "unsupported")
+# failure_type of an evaluation that produced no scores; like analytics, pass counts skip it.
+EVALUATOR_ERROR = "evaluator_error"
 SCORES = ("faithfulness", "answer_relevance", "context_relevance")
 BRANCH_FIELDS = (
     "query_id", "status", "answer", "final_attempt", "attempts", *SCORES, "passed",
@@ -294,7 +296,8 @@ def format_table(rows: Sequence[dict[str, Any]]) -> str:
 
 
 def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """Run totals; pass counts are over the rows whose final answer was evaluated."""
+    """Run totals; pass counts are over the rows whose final answer has a usable evaluation
+    (not `evaluator_error`, as in analytics' `final_pass`), and those errors are counted apart."""
     ok = [row for row in rows if row["error"] is None]
     outcomes = [row["reli_correction_outcome"] for row in ok]
     summary: dict[str, Any] = {
@@ -303,11 +306,13 @@ def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "corrections_successful": outcomes.count("successful"),
     }
     for mode in ("basic", "reli"):
-        evaluated = [row for row in ok if row[f"{mode}_passed"] is not None]
+        scored = [row for row in ok if row[f"{mode}_passed"] is not None]
+        evaluated = [row for row in scored if row[f"{mode}_failure_type"] != EVALUATOR_ERROR]
         latencies = [row[f"{mode}_latency_ms"] for row in ok
                      if row[f"{mode}_latency_ms"] is not None]
         summary[f"{mode}_passed"] = sum(row[f"{mode}_passed"] is True for row in evaluated)
         summary[f"{mode}_evaluated"] = len(evaluated)
+        summary[f"{mode}_evaluator_errors"] = len(scored) - len(evaluated)
         summary[f"{mode}_avg_latency_ms"] = (sum(latencies) / len(latencies)
                                              if latencies else None)
     return summary
@@ -318,13 +323,17 @@ def format_summary(summary: dict[str, Any], run_id: str) -> str:
         value = summary[f"{mode}_avg_latency_ms"]
         return "-" if value is None else f"{value:.0f} ms"
 
+    def errors(mode):
+        count = summary.get(f"{mode}_evaluator_errors") or 0
+        return f" ({count} evaluator error(s) not counted)" if count else ""
+
     return "\n".join([
         f"Run {run_id}: {summary['completed']}/{summary['questions']} questions compared, "
         f"{summary['errors']} error(s)",
         f"  Basic RAG: {summary['basic_passed']}/{summary['basic_evaluated']} final answers "
-        f"passed; avg Claude latency {latency('basic')}",
+        f"passed{errors('basic')}; avg Claude latency {latency('basic')}",
         f"  RELI-RAG:  {summary['reli_passed']}/{summary['reli_evaluated']} final answers "
-        f"passed; avg Claude latency {latency('reli')}",
+        f"passed{errors('reli')}; avg Claude latency {latency('reli')}",
         f"  Corrections: {summary['corrections_triggered']} triggered, "
         f"{summary['corrections_successful']} successful",
         f"  Analytics: GET /analytics/summary?benchmark_run_id={run_id}",

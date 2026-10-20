@@ -57,7 +57,8 @@ CHUNKS = [
                    text="TCP provides a reliable,\nordered byte stream between applications.",
                    similarity=0.9),
     RetrievedChunk(chunk_id=57, document_id=1, document="net.pdf", page=5,
-                   text="Connections are opened with a three-way handshake (SYN, SYN-ACK, ACK).",
+                   text="TCP connections are opened with a three-way handshake (SYN, SYN-ACK, "
+                        "ACK).",
                    similarity=0.8),
 ]
 
@@ -300,7 +301,7 @@ class EvaluatorSettingsTest(unittest.TestCase):
         loaded = self.load()
         self.assertIsNone(loaded.evaluator_model)
         self.assertEqual(loaded.evaluator_max_tokens, 2048)
-        self.assertEqual(loaded.evaluator_pass_threshold, 0.80)
+        self.assertEqual(loaded.evaluator_pass_threshold, 0.70)
         self.assertEqual(loaded.evaluator_max_parse_attempts, 2)
         self.assertEqual(loaded.claude_max_tokens, 1024)
 
@@ -477,8 +478,11 @@ class StatementChecksTest(unittest.TestCase):
                 "TCP provides an ordered stream with encryption, compression, multiplexing and "
                 "congestion pricing.", SUPPORTED, 41, TCP_FACT), PARTIALLY_SUPPORTED,
                 "only part of the claim"),
-            "negation differs": (claim("TCP does not provide an ordered byte stream.", SUPPORTED,
-                                       41, TCP_FACT), PARTIALLY_SUPPORTED, "negation"),
+            "quote states the opposite": (claim("TCP does not provide an ordered byte stream.",
+                                                SUPPORTED, 41, TCP_FACT), UNSUPPORTED,
+                                          "states the opposite"),
+            "negation differs": (claim("Applications cannot receive an ordered byte stream.",
+                                       SUPPORTED, 41, TCP_FACT), PARTIALLY_SUPPORTED, "negation"),
         }
         for name, (bad_claim, verdict, reason) in cases.items():
             with self.subTest(name):

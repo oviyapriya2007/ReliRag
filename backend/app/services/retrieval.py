@@ -7,11 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Document, DocumentChunk, RetrievalLog
-from app.services.answer_checks import content_terms
+from app.services.answer_checks import content_terms, normalize_text
 from app.services.ingestion import embed_texts
 
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 50
+# How many times `k` candidates a search may read to replace chunks that repeat another
+# chunk's text (see `_search`).
+DUPLICATE_SEARCH_FACTOR = 4
 # Reciprocal rank fusion constant; 60 is the usual choice and damps the weight of rank 1.
 RRF_K = 60
 # Most requirements of one question searched separately (each costs one vector search).
@@ -126,7 +129,9 @@ def _nearest(
     )
     if document_ids is not None:
         stmt = stmt.where(DocumentChunk.document_id.in_(list(document_ids)))
-    stmt = stmt.order_by(distance).limit(k)
+    # Equal distances (e.g. identical text in two documents) are ordered by chunk ID, so the
+    # same query always returns the same chunks in the same order.
+    stmt = stmt.order_by(distance, DocumentChunk.id).limit(k)
 
     return [
         (RetrievedChunk(
@@ -139,6 +144,37 @@ def _nearest(
         ), 1.0 - float(row.distance))
         for row in db.execute(stmt)
     ]
+
+
+def _search(
+    db: Session,
+    query_embedding: Sequence[float],
+    k: int,
+    document_ids: Sequence[int] | None,
+    *,
+    score_embedding: Sequence[float] | None = None,
+) -> list[tuple[RetrievedChunk, float]]:
+    """`_nearest`, without chunks whose text repeats a higher-ranked chunk's word for word.
+
+    Repeats (e.g. the same document uploaded twice) would otherwise fill several of the `k`
+    places with one passage. When dropping them leaves fewer than `k` chunks, the search goes
+    deeper, up to DUPLICATE_SEARCH_FACTOR * `k` candidates.
+    """
+    limit = k * DUPLICATE_SEARCH_FACTOR
+    fetch = k
+    while True:
+        rows = _nearest(db, query_embedding, fetch, document_ids,
+                        score_embedding=score_embedding)
+        seen: set[str] = set()
+        distinct = []
+        for row in rows:
+            key = normalize_text(row[0].text)
+            if key not in seen:
+                seen.add(key)
+                distinct.append(row)
+        if len(distinct) >= k or len(rows) < fetch or fetch >= limit:
+            return distinct[:k]
+        fetch = min(fetch * 2, limit)
 
 
 def combine_requirement_results(
@@ -179,7 +215,8 @@ def retrieve(
     A question that lists several requirements (see `split_requirements`) is also searched
     once per requirement, so each one is represented (see `combine_requirement_results`);
     requirement matches weaker than SIMILARITY_GATE are not used. Otherwise this is a plain
-    nearest-neighbour search. Similarities are always against the whole question.
+    nearest-neighbour search. Similarities are always against the whole question. A chunk whose
+    text repeats a higher-ranked chunk's is skipped (see `_search`).
     `document_ids=None` searches all documents; an empty sequence matches nothing. Soft-deleted
     documents are never searched.
     """
@@ -192,12 +229,12 @@ def retrieve(
         return []
 
     query_embedding = embed_query(question)
-    whole = [chunk for chunk, _ in _nearest(db, query_embedding, k, document_ids)]
+    whole = [chunk for chunk, _ in _search(db, query_embedding, k, document_ids)]
     requirements = split_requirements(question)
     if not requirements or not whole:
         return whole
     per_requirement = [
-        _nearest(db, embedding, k, document_ids, score_embedding=query_embedding)
+        _search(db, embedding, k, document_ids, score_embedding=query_embedding)
         for embedding in embed_texts(requirements)
     ]
     return combine_requirement_results(whole, per_requirement, k, settings.similarity_gate)

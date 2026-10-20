@@ -30,6 +30,7 @@ SYSTEM_PROMPT = f"""You answer questions using ONLY the numbered context passage
 
 Rules:
 - Use only facts stated in the context. Do not use prior knowledge or make assumptions.
+- Address every part of the question that the context supports.
 - Cite every claim with the number of the passage that supports it, in square brackets, e.g. [1]. \
 Cite multiple passages separately, e.g. [1][3]. Never cite a number that is not in the context.
 - If the context does not contain enough information to answer the question, reply with exactly \
@@ -40,6 +41,20 @@ separate sentence without a citation, naming the part that is not covered. Never
 
 MAX_STRICT_CLAIMS = 20
 MAX_STRICT_CLAIM_CHARS = 500
+# Evaluator feedback quoted in correction instructions is cut to this length.
+MAX_CORRECTION_FEEDBACK_CHARS = 1500
+
+CORRECTION_INSTRUCTIONS = f"""Correction: an evaluator reviewed a previous answer to this question \
+and reported these problems.
+Problems: {{problems}}
+Evaluator feedback: {{feedback}}
+- Cover every part of the question that the context passages support, including any part the \
+previous answer left out, and cite every factual sentence.
+- The problems and feedback only say what to look for; they are not evidence. Do not add anything \
+the passages do not state, even if the feedback mentions it.
+- If the passages still do not cover a part of the question, say so plainly in a separate \
+sentence without a citation instead of guessing. Reply with exactly {INSUFFICIENT_EVIDENCE} only \
+if the passages answer no part of the question."""
 
 STRICT_INSTRUCTIONS = f"""Strict mode: a previous answer to this question was rejected because \
 some of its claims are not supported by the context passages.{{claims}}
@@ -81,6 +96,18 @@ def build_strict_instructions(rejected_claims: Sequence[str]) -> str:
     claims = [claim for claim in claims if claim][:MAX_STRICT_CLAIMS]
     listing = "".join(f"\n- {claim}" for claim in claims)
     return STRICT_INSTRUCTIONS.format(claims=f"\nRejected claims:{listing}\n" if claims else "")
+
+
+def build_correction_instructions(problems: str, feedback: str | None) -> str:
+    """Rules for regenerating an answer that an evaluation found incomplete or weakly
+    supported: what was wrong, and that only the passages count as evidence.
+
+    `feedback` (the evaluator's) has its whitespace collapsed and is cut to
+    MAX_CORRECTION_FEEDBACK_CHARS characters.
+    """
+    feedback = " ".join((feedback or "").split())[:MAX_CORRECTION_FEEDBACK_CHARS]
+    return CORRECTION_INSTRUCTIONS.format(problems=" ".join(problems.split()),
+                                          feedback=feedback or "None given.")
 
 
 def is_refusal(text: str) -> bool:

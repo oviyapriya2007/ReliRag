@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session, selectinload  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.models import Answer, DocumentChunk, RetrievalLog  # noqa: E402
+from app.services.answer_checks import quote_occurs  # noqa: E402
 from app.services.evaluator import (  # noqa: E402
     EVALUATOR_ERROR,
     IRRELEVANT_RETRIEVAL,
@@ -317,19 +318,20 @@ def quote_problem(claim, chunks_by_id: dict[int, RetrievedChunk]) -> str | None:
     if chunk is None:
         return (f"chunk {claim.evidence_chunk_id} is not among the retrieved chunk IDs "
                 f"{sorted(chunks_by_id)}")
-    quote = _normalize(claim.evidence_quote or "")
-    if not quote:
+    if not _normalize(claim.evidence_quote or ""):
         return f"no evidence_quote for chunk {claim.evidence_chunk_id}"
-    if quote not in _normalize(chunk.text):
+    if not quote_occurs(claim.evidence_quote, chunk.text):
         return f"quote not found in chunk {claim.evidence_chunk_id}"
     return None
 
 
 def validate_result(result: EvaluationResult, chunks: Sequence[RetrievedChunk],
                     threshold: float | None = None) -> list[Check]:
-    """Re-check an evaluation without relying on the evaluator's own helpers.
+    """Re-check an evaluation without relying on the evaluator's scoring helpers.
 
-    Quote-presence checks only show that a quote exists in the cited chunk; they say nothing
+    Quote presence uses the same definition as the evaluator (`quote_occurs`), so a quote the
+    evaluator accepted is not reported missing. These checks only show that a quote exists in
+    the cited chunk; they say nothing
     about whether the quote supports the claim (see `check_negative_case`).
     """
     if threshold is None:

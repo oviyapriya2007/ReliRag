@@ -13,9 +13,10 @@ from app.schemas import (
     QueryResponse,
     RetrievalResult,
 )
+from app.services.attempt_selection import describe_final_selection
 from app.services.generator import ANSWERED, parse_citations
 from app.services.llm import LLMError
-from app.services.query_pipeline import ERROR, run_basic_query, run_reli_rag
+from app.services.query_pipeline import ERROR, run_basic_query, run_reli_rag, summarize_attempt
 from app.services.similarity_gate import INSUFFICIENT_EVIDENCE
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -23,6 +24,10 @@ router = APIRouter(prefix="/query", tags=["query"])
 GATE_FAILED_MESSAGE = (
     "I couldn't find enough evidence in the uploaded documents to answer this question. "
     "The most relevant passages did not meet the similarity threshold, so no answer was generated."
+)
+NO_PASSAGES_MESSAGE = (
+    "I couldn't find enough evidence in the uploaded documents to answer this question. "
+    "No passages could be retrieved from the documents searched, so no answer was generated."
 )
 NOT_SUPPORTED_MESSAGE = (
     "I couldn't find enough evidence in the uploaded documents to answer this question. "
@@ -129,11 +134,22 @@ def _final_answer(query: Query, final: Answer | None) -> str | None:
     if query.final_status == ANSWERED and final is not None:
         return final.answer_text
     if query.final_status == INSUFFICIENT_EVIDENCE:
-        claude_called = final is not None and final.model is not None
-        return NOT_SUPPORTED_MESSAGE if claude_called else GATE_FAILED_MESSAGE
+        if final is not None and final.model is not None:
+            return NOT_SUPPORTED_MESSAGE
+        if final is not None and not final.retrieval_logs:
+            return NO_PASSAGES_MESSAGE
+        return GATE_FAILED_MESSAGE
     if query.final_status == ERROR:
         return ERROR_MESSAGE
     return None
+
+
+def _selection_reason(query: Query) -> str | None:
+    """Why the recorded final attempt is reported, judged on each attempt's latest evaluation
+    (the one the response shows)."""
+    attempts = [summarize_attempt(answer, answer.evaluations[-1] if answer.evaluations else None)
+                for answer in query.answers]
+    return describe_final_selection(query.mode, attempts, query.final_attempt_number)
 
 
 def _to_response(query: Query) -> QueryResponse:
@@ -146,6 +162,7 @@ def _to_response(query: Query) -> QueryResponse:
         status=query.final_status,
         final_answer=_final_answer(query, final),
         final_attempt_number=final.attempt_number if final is not None else None,
+        selection_reason=_selection_reason(query),
         attempts=[_to_attempt(answer) for answer in query.answers],
     )
 

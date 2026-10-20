@@ -617,7 +617,9 @@ class AttemptCorrectionTest(PinnedSettingsTestCase):
         self.assertEqual(RETRY_TOP_K, 8)
         self.assertTrue(attempt.rewrite.rewritten)
         self.assertTrue(claude.call_args.args[0].endswith(f"Question: {QUESTION}"))
-        self.assertEqual(claude.call_args.kwargs["system"], generator.SYSTEM_PROMPT)
+        self.assertEqual(claude.call_args.kwargs["system"],
+                         f"{generator.SYSTEM_PROMPT}\n\n" + generator.build_correction_instructions(
+                             FAILURE_DESCRIPTIONS[IRRELEVANT_RETRIEVAL], FEEDBACK))
 
         first, second = self.answers()
         self.assertEqual((second.attempt_number, second.retrieval_query, second.status),
@@ -649,6 +651,8 @@ class AttemptCorrectionTest(PinnedSettingsTestCase):
         system = claude.call_args.kwargs["system"]
         self.assertTrue(system.startswith(generator.SYSTEM_PROMPT))
         self.assertIn("- Item A has an allowance of 100 units.", system)
+        self.assertTrue(system.endswith(generator.build_correction_instructions(
+            FAILURE_DESCRIPTIONS[IRRELEVANT_RETRIEVAL], FEEDBACK)))
         self.assertEqual((second.strategy, second.retrieval_query, second.status),
                          (REWRITE, REWRITTEN, ANSWERED))
         self.assert_first_attempt_unchanged()

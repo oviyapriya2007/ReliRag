@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getQuery, USE_MOCK } from "../../api/client";
+import { thresholdCheck, thresholdPercent } from "../evaluationThreshold.js";
 
 const C = {
   purple: "#554188",
@@ -376,7 +377,9 @@ function AttemptHistory({ attempts, finalAttempt }) {
   );
 }
 
-function AnswerComparison({ before, after }) {
+function AnswerComparison({ before, after, reportedAttemptNumber }) {
+  const reported = (attempt) =>
+    Number(attempt?.attempt_number) === Number(reportedAttemptNumber) ? " · Reported" : "";
   const beforeText = before?.answer ?? "";
   const afterText = after?.answer ?? "";
 
@@ -393,7 +396,7 @@ function AnswerComparison({ before, after }) {
       <SectionHeading
         eyebrow="Correction analysis"
         title="Before & after"
-        description="Compare the first answer with the final correction. Sentence differences use exact text matching."
+        description="Compare the first answer with the correction attempt. The reported answer is marked. Sentence differences use exact text matching."
         icon="⇄"
       />
 
@@ -409,7 +412,7 @@ function AnswerComparison({ before, after }) {
             ORIGINAL
           </span>
           <h3 className="mt-3 font-bold" style={{ color: C.ink }}>
-            Before correction
+            Attempt {before?.attempt_number}{reported(before)}
           </h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7" style={{ color: C.muted }}>
             {beforeText || "No original answer was returned."}
@@ -424,13 +427,13 @@ function AnswerComparison({ before, after }) {
             className="inline-block rounded-full px-3 py-1 text-xs font-bold"
             style={{ background: C.greenLight, color: C.green }}
           >
-            CORRECTED
+            CORRECTION
           </span>
           <h3 className="mt-3 font-bold" style={{ color: C.ink }}>
-            Final answer
+            Attempt {after?.attempt_number}{reported(after)}
           </h3>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-7" style={{ color: C.muted }}>
-            {afterText || "No final answer was returned."}
+            {afterText || "This attempt returned no answer."}
           </p>
         </article>
       </div>
@@ -480,27 +483,31 @@ function DifferenceList({ title, items, empty, tint, color }) {
   );
 }
 
-function CorrectionReason({ first, latest }) {
+function CorrectionReason({ attempts, finalAttempt, selectionReason }) {
+  const first = attempts[0];
+  const correction = attempts.length > 1 ? attempts[attempts.length - 1] : null;
   const firstEvaluation = first?.evaluation;
-  const latestEvaluation = latest?.evaluation;
-
-  const failureType =
-    firstEvaluation?.failure_type ??
-    latestEvaluation?.failure_type ??
-    first?.failure_type ??
-    latest?.failure_type;
-
-  const feedback =
-    latestEvaluation?.feedback ??
-    firstEvaluation?.feedback ??
-    latest?.feedback ??
-    first?.feedback;
 
   const fields = [
-    ["Failure type", formatLabel(failureType)],
-    ["Evaluator feedback", feedback || "No evaluator feedback was returned."],
+    ["Attempt 1 failure type", formatLabel(firstEvaluation?.failure_type)],
+    [
+      "Attempt 1 evaluator feedback",
+      firstEvaluation?.feedback || "No evaluator feedback was returned.",
+    ],
     ["Original retrieval query", first?.retrieval_query || "Not available"],
-    ["Final retrieval query", latest?.retrieval_query || "Not available"],
+    [
+      "Correction",
+      correction
+        ? `Attempt ${correction.attempt_number}: ${formatLabel(correction.strategy)} · ${formatLabel(correction.status)} · retrieval query: ${correction.retrieval_query || "Not available"}`
+        : "No correction attempt was recorded.",
+    ],
+    [
+      "Final selection",
+      selectionReason ||
+        (finalAttempt
+          ? `Attempt ${finalAttempt.attempt_number} is reported.`
+          : "No final attempt was reported."),
+    ],
   ];
 
   return (
@@ -508,7 +515,7 @@ function CorrectionReason({ first, latest }) {
       <SectionHeading
         eyebrow="Troubleshooting"
         title="Correction diagnostics"
-        description="Inspect the reported failure and the retrieval queries used across attempts."
+        description="Inspect what triggered a correction, what the correction attempt did, and why the reported attempt was selected."
         icon="⌕"
       />
 
@@ -529,7 +536,7 @@ function CorrectionReason({ first, latest }) {
         ))}
       </div>
 
-      {first && latest && first === latest && (
+      {attempts.length === 1 && (
         <p
           className="mt-4 rounded-xl p-4 text-sm"
           style={{ background: C.amberLight, color: C.amber }}
@@ -684,6 +691,7 @@ function Evaluation() {
 
   const attempts = Array.isArray(query?.attempts) ? query.attempts : [];
   const initialAttempt = attempts[0] ?? null;
+  const correctionAttempt = attempts.length > 1 ? attempts[attempts.length - 1] : null;
   const finalAttemptNumber = query?.final_attempt_number;
 
   const finalAttempt =
@@ -736,6 +744,7 @@ function Evaluation() {
 
   const scores = [
     {
+      metric: "faithfulness",
       title: "Faithfulness",
       value: evaluation?.faithfulness,
       color: C.pink,
@@ -744,6 +753,7 @@ function Evaluation() {
       description: "Does the answer stay supported by retrieved evidence?",
     },
     {
+      metric: "answer_relevance",
       title: "Answer relevance",
       value: evaluation?.answer_relevance,
       color: C.green,
@@ -752,6 +762,7 @@ function Evaluation() {
       description: "Does the answer address the user's question?",
     },
     {
+      metric: "context_relevance",
       title: "Context relevance",
       value: evaluation?.context_relevance,
       color: C.blue,
@@ -761,33 +772,18 @@ function Evaluation() {
     },
   ];
 
-  const evaluatorThreshold = (() => {
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem("relirag_evaluation_settings") || "{}"
-      );
-      const value = Number(saved.evaluatorThreshold ?? 0.7);
-      return Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0.7;
-    } catch {
-      return 0.7;
-    }
-  })();
-
-  const thresholdResults = scores.map((score) => {
-    const normalized = normalizedScore(score.value);
-    return {
-      ...score,
-      passed: normalized === null ? null : normalized >= evaluatorThreshold * 100,
-    };
-  });
-
-  const availableThresholdResults = thresholdResults.filter(
-    (score) => score.passed !== null
-  );
-
-  const thresholdCheckPassed =
-    availableThresholdResults.length === scores.length &&
-    availableThresholdResults.every((score) => score.passed);
+  const threshold = thresholdCheck(evaluation);
+  const thresholdResults = scores.map((score) => ({
+    ...score,
+    passed: threshold.scores[score.metric],
+  }));
+  const thresholdBadge = {
+    passed: { label: "ALL SCORES PASS", style: badgeStyle("PASSED") },
+    below_threshold: { label: "BELOW THRESHOLD", style: badgeStyle("FAILED") },
+    evaluator_error: { label: "EVALUATOR ERROR", style: { color: C.amber, background: C.amberLight } },
+    incomplete: { label: "INCOMPLETE", style: badgeStyle("UNKNOWN") },
+    not_evaluated: { label: "NOT EVALUATED", style: badgeStyle("UNKNOWN") },
+  }[threshold.status];
 
   const finalVerdict =
     evaluation?.passed === true
@@ -993,8 +989,12 @@ function Evaluation() {
 
           {initialAttempt && finalAttempt && (
             <>
-              {attempts.length > 1 ? (
-                <AnswerComparison before={initialAttempt} after={finalAttempt} />
+              {correctionAttempt ? (
+                <AnswerComparison
+                  before={initialAttempt}
+                  after={correctionAttempt}
+                  reportedAttemptNumber={finalAttempt.attempt_number}
+                />
               ) : (
                 <section className="p-5 sm:p-6" style={panel}>
                   <SectionHeading
@@ -1008,31 +1008,35 @@ function Evaluation() {
                 </section>
               )}
 
-              {attempts.length > 1 && (
+              {correctionAttempt && (
                 <section className="p-5 sm:p-6" style={panel}>
                   <SectionHeading
                     eyebrow="Metric changes"
-                    title="Score improvement"
-                    description="Compare the original and final attempts. This is a correction comparison, not a Basic RAG benchmark."
+                    title="Score changes"
+                    description={`Compare attempt ${initialAttempt.attempt_number} with correction attempt ${correctionAttempt.attempt_number}. The reported answer is attempt ${finalAttempt.attempt_number}. This is a correction comparison, not a Basic RAG benchmark.`}
                     icon="↗"
                   />
                   <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <ScoreComparison title="Faithfulness" metric="faithfulness" before={initialAttempt} after={finalAttempt} />
-                    <ScoreComparison title="Answer relevance" metric="answer_relevance" before={initialAttempt} after={finalAttempt} />
-                    <ScoreComparison title="Context relevance" metric="context_relevance" before={initialAttempt} after={finalAttempt} />
+                    <ScoreComparison title="Faithfulness" metric="faithfulness" before={initialAttempt} after={correctionAttempt} />
+                    <ScoreComparison title="Answer relevance" metric="answer_relevance" before={initialAttempt} after={correctionAttempt} />
+                    <ScoreComparison title="Context relevance" metric="context_relevance" before={initialAttempt} after={correctionAttempt} />
                   </div>
                 </section>
               )}
             </>
           )}
 
-          <CorrectionReason first={initialAttempt} latest={finalAttempt} />
+          <CorrectionReason
+            attempts={attempts}
+            finalAttempt={finalAttempt}
+            selectionReason={query?.selection_reason}
+          />
 
           <section className="p-5 sm:p-6" style={panel}>
             <SectionHeading
               eyebrow="Quality gate"
               title="Evaluator threshold check"
-              description="A frontend check against your saved threshold. It does not rerun the backend evaluator."
+              description={`Each score must be at least ${thresholdPercent()}%, the same pass threshold the backend evaluator uses. A score exactly at the threshold passes. This check does not rerun the evaluator.`}
               icon="✓"
             />
 
@@ -1043,26 +1047,29 @@ function Evaluation() {
               <div>
                 <p className="text-sm" style={{ color: C.muted }}>Required minimum score</p>
                 <p className="mt-1 text-3xl font-bold" style={{ color: C.purple }}>
-                  {Math.round(evaluatorThreshold * 100)}%
+                  {thresholdPercent()}%
                 </p>
               </div>
               <span
                 className="rounded-full px-3 py-2 text-xs font-bold"
-                style={
-                  availableThresholdResults.length !== scores.length
-                    ? badgeStyle("UNKNOWN")
-                    : thresholdCheckPassed
-                      ? badgeStyle("PASSED")
-                      : badgeStyle("FAILED")
-                }
+                style={thresholdBadge.style}
               >
-                {availableThresholdResults.length !== scores.length
-                  ? "INCOMPLETE"
-                  : thresholdCheckPassed
-                    ? "ALL SCORES PASS"
-                    : "CHECK REQUIRED"}
+                {thresholdBadge.label}
               </span>
             </div>
+
+            {threshold.status === "evaluator_error" && (
+              <p className="mt-3 text-xs leading-5" style={{ color: C.muted }}>
+                The evaluator could not complete, so this answer fails regardless of the threshold.
+              </p>
+            )}
+            {threshold.matchesVerdict === false && (
+              <p className="mt-3 text-xs leading-5" style={{ color: C.muted }}>
+                The stored verdict ({evaluation.passed ? "passed" : "failed"}) differs from this
+                check. It was recorded with the pass threshold in effect when this answer was
+                evaluated.
+              </p>
+            )}
 
             <div className="mt-4 space-y-3">
               {thresholdResults.map((score) => (

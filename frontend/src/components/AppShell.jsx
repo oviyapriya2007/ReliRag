@@ -48,10 +48,8 @@ function AppShell() {
 
   // Check the actual backend health endpoint.
   useEffect(() => {
-    if (USE_MOCK) {
-      setBackendStatus('mock')
-      return
-    }
+    // The status starts as 'mock' in mock mode, so there is nothing to check.
+    if (USE_MOCK) return
 
     let isMounted = true
     let isChecking = false

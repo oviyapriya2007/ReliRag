@@ -14,17 +14,19 @@ from app.services.corrector import (
     REWRITE,
     STRICT,
     RewriteResult,
+    carry_over_chunks,
     choose_correction,
     claims_to_reject,
+    describe_failures,
     failure_signals,
     retry_top_k,
     rewrite_query,
-    supporting_chunks,
 )
 from app.services.evaluator import EVALUATOR_ERROR, EvaluationResult, evaluate_answer
 from app.services.generator import (
     ANSWERED,
     GenerationResult,
+    build_correction_instructions,
     build_strict_instructions,
     generate_answer,
 )
@@ -154,7 +156,8 @@ def run_reli_rag(
     STRICT (regenerate from the same chunks, listing the rejected claims). Attempt 2 is
     evaluated on its own and `select_final_attempt` decides which attempt the query reports.
     Only saved evaluations count, so the stored record always explains the choice. A failure
-    during attempt 2 is logged and leaves attempt 1 as the final attempt.
+    during attempt 2 is logged, marks attempt 2 ERROR if its row was left without a status,
+    and leaves attempt 1 as the final attempt.
     `chunks`, if given, replace attempt 1's retrieval (see `execute_reli_rag`).
     """
     query = create_query(db, question, mode="reli", k=k, document_ids=document_ids)
@@ -203,7 +206,7 @@ def execute_reli_rag(
                 db, query, attempt_number=2, feedback=first_evaluation.feedback,
                 failure_type=failure_signals(first_evaluation),
                 k=_retry_k(query), document_ids=document_ids, threshold=threshold,
-                carry_over=supporting_chunks(first.chunks, first_evaluation.claims),
+                carry_over=carry_over_chunks(first.chunks, first_evaluation),
                 rejected_claims=claims_to_reject(first_evaluation),
             )
         second_evaluation = None
@@ -215,6 +218,7 @@ def execute_reli_rag(
     except Exception:
         db.rollback()
         logger.exception("Correction attempt failed for query_id=%s", query_id)
+        _mark_unfinished_attempt_error(db, query_id, 2)
 
     final = select_final_attempt(attempts)
     set_final_attempt(db, query, final.attempt_number, final.status)
@@ -229,7 +233,10 @@ def evaluate_and_save(
     return result if save_evaluation(db, attempt.answer, result) is not None else None
 
 
-def summarize_attempt(answer: Answer, evaluation: EvaluationResult | None) -> AttemptSummary:
+def summarize_attempt(
+    answer: Answer, evaluation: EvaluationResult | Evaluation | None
+) -> AttemptSummary:
+    """Selection view of an attempt and its fresh or stored evaluation."""
     scores = None
     if evaluation is not None:
         scores = AttemptEvaluation(
@@ -273,6 +280,20 @@ def record_failure(db: Session, query_id: int) -> None:
             _mark_error(fresh, query_id)
     except Exception:
         logger.exception("Could not mark query_id=%s as ERROR", query_id)
+
+
+def _mark_unfinished_attempt_error(db: Session, query_id: int, attempt_number: int) -> None:
+    """Mark the attempt ERROR if a failure left its row without a status; never raises."""
+    try:
+        answer = db.scalar(select(Answer).where(Answer.query_id == query_id,
+                                                Answer.attempt_number == attempt_number))
+        if answer is not None and answer.status is None:
+            answer.status = ERROR
+            db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not mark attempt %s of query_id=%s as ERROR",
+                         attempt_number, query_id)
 
 
 def _mark_error(db: Session, query_id: int) -> None:
@@ -341,16 +362,20 @@ def run_rewrite_attempt(
     `retrieval_query`); the answer is still generated for `query.question`. A rejected
     rewrite falls back to the original question, retrieved with the larger `k`.
     `failure_type` is one failure type or all of the evaluation's failure signals.
-    `carry_over` (attempt 1's verified evidence) is merged with the new retrieval once it
-    passes the gate, and `rejected_claims`, if any, are passed as strict instructions.
+    `carry_over` (attempt 1's chunks to keep, see `carry_over_chunks`) is merged with the new
+    retrieval once it passes the gate. The answer is generated with correction instructions
+    naming the problems and the evaluator `feedback` (see `build_correction_instructions`),
+    preceded by strict instructions listing `rejected_claims`, if any.
     Same guarantees as `run_attempt`: earlier attempts and `query.final_status` are untouched.
     """
     rewrite = rewrite_query(query.question, feedback, failure_type=failure_type)
-    strict_instructions = build_strict_instructions(rejected_claims) if rejected_claims else None
+    instructions = [build_correction_instructions(describe_failures(failure_type), feedback)]
+    if rejected_claims:
+        instructions.insert(0, build_strict_instructions(rejected_claims))
     attempt = run_attempt(
         db, query, attempt_number=attempt_number, retrieval_query=rewrite.query,
         k=k, document_ids=document_ids, threshold=threshold, strategy=REWRITE,
-        carry_over=carry_over, strict_instructions=strict_instructions,
+        carry_over=carry_over, strict_instructions="\n\n".join(instructions),
     )
     return replace(attempt, rewrite=rewrite)
 

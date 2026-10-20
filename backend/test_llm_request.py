@@ -62,7 +62,8 @@ CHUNKS = [
                    text="TCP provides a reliable, ordered byte stream between applications.",
                    similarity=0.9),
     RetrievedChunk(chunk_id=57, document_id=1, document="net.pdf", page=5,
-                   text="Connections are opened with a three-way handshake (SYN, SYN-ACK, ACK).",
+                   text="TCP connections are opened with a three-way handshake (SYN, SYN-ACK, "
+                        "ACK).",
                    similarity=0.8),
 ]
 EVALUATOR_REPLY = json.dumps({

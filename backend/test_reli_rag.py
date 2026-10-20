@@ -339,14 +339,25 @@ class ReliRagTest(unittest.TestCase):
                          (ANSWERED, SECOND_ANSWER, REWRITE))
 
     def test_passing_second_attempt_that_scores_lower_keeps_first(self):
-        partial = {"claim_text": "Item A has an allowance of 200 units per year for everyone",
-                   "verdict": PARTIALLY_SUPPORTED, "evidence_chunk_id": self.chunk_ids[2],
-                   "evidence_quote": "Item A has an allowance of 200 units per year"}
+        def chunk_2_claim(text, quote, verdict=SUPPORTED):
+            return {"claim_text": text, "verdict": verdict,
+                    "evidence_chunk_id": self.chunk_ids[2], "evidence_quote": quote}
+
+        # Four distinct supported claims and one partial one: faithfulness 0.9.
+        second_claims = [
+            self.supported(2),
+            chunk_2_claim("Item A has an allowance.", "Item A has an allowance"),
+            chunk_2_claim("The allowance for item A is 200 units.", "allowance of 200 units"),
+            chunk_2_claim("The item A allowance applies per year.",
+                          "an allowance of 200 units per year"),
+            chunk_2_claim("Item A has an allowance of 200 units per year for everyone",
+                          "Item A has an allowance of 200 units per year", PARTIALLY_SUPPORTED),
+        ]
         body, mocks = self.post(
             retrievals=[self.retrieved([0]), self.retrieved([2])],
             generations=[FIRST_ANSWER, SECOND_ANSWER],
             evaluations=[self.evaluation([self.supported(0)], 0.75, 1.0),        # missing_info, 0.917
-                         self.evaluation([self.supported(2)] * 4 + [partial], 0.85, 0.85)],  # 0.867
+                         self.evaluation(second_claims, 0.85, 0.85)],              # 0.867
             rewrites=[REWRITTEN],
         )
 
@@ -498,30 +509,37 @@ class ReliRagTest(unittest.TestCase):
                 query, _ = self.saved(body["query_id"])
                 self.assertEqual(query.final_attempt_number, body["final_attempt_number"])
 
-    def test_rewrite_keeps_verified_first_attempt_evidence(self):
-        body, mocks = self.post(
-            retrievals=[self.retrieved([0, 1]), self.retrieved([2, 3])],
-            generations=[FIRST_ANSWER, SECOND_ANSWER],
-            evaluations=[self.evaluation([self.supported(0)], 0.5, 0.9),   # missing_info
-                         self.passing()],
-            rewrites=[REWRITTEN],
-        )
+    def test_rewrite_keeps_first_attempt_evidence(self):
+        # Chunk 0 backs a supported claim and is always kept. Chunk 1 backed nothing: it is kept
+        # only when attempt 1's passages were judged adequate, since it may hold the part the
+        # answer left out.
+        for context_relevance, kept in ((0.9, (0, 1, 2, 3)), (0.4, (0, 2, 3))):
+            with self.subTest(context_relevance=context_relevance):
+                body, mocks = self.post(
+                    retrievals=[self.retrieved([0, 1]), self.retrieved([2, 3])],
+                    generations=[FIRST_ANSWER, SECOND_ANSWER],
+                    evaluations=[self.evaluation([self.supported(0)], 0.5, context_relevance),
+                                 self.passing()],
+                    rewrites=[REWRITTEN],
+                )
 
-        self.assert_final(body, 2, ANSWERED, SECOND_ANSWER, attempts=2)
-        first, second = body["attempts"]
-        self.assertEqual([r["chunk_id"] for r in first["retrieval"]], self.chunk_ids[0:2])
-        # Chunk 0 backs a supported claim and is kept; chunk 1 backed nothing and is not.
-        logged = [r["chunk_id"] for r in second["retrieval"]]
-        self.assertEqual(sorted(logged), sorted([self.chunk_ids[i] for i in (0, 2, 3)]))
-        self.assertEqual([r["rank"] for r in second["retrieval"]], [1, 2, 3])
-        _, answers = self.saved(body["query_id"])
-        self.assertEqual(self.logged_chunk_ids(answers[1].id), logged)
-        second_prompt = mocks.generator.call_args_list[1].args[0]
-        self.assertIn(CHUNK_TEXTS[0], second_prompt)
-        self.assertNotIn(CHUNK_TEXTS[1], second_prompt)
-        self.assertTrue(second_prompt.endswith(f"Question: {QUESTION}"))
-        self.assertEqual(mocks.generator.call_args_list[1].kwargs["system"],
-                         generator.SYSTEM_PROMPT)
+                self.assert_final(body, 2, ANSWERED, SECOND_ANSWER, attempts=2)
+                first, second = body["attempts"]
+                self.assertEqual([r["chunk_id"] for r in first["retrieval"]],
+                                 self.chunk_ids[0:2])
+                logged = [r["chunk_id"] for r in second["retrieval"]]
+                self.assertEqual(sorted(logged), sorted(self.chunk_ids[i] for i in kept))
+                self.assertEqual([r["rank"] for r in second["retrieval"]],
+                                 list(range(1, len(kept) + 1)))
+                _, answers = self.saved(body["query_id"])
+                self.assertEqual(self.logged_chunk_ids(answers[1].id), logged)
+                second_prompt = mocks.generator.call_args_list[1].args[0]
+                self.assertIn(CHUNK_TEXTS[0], second_prompt)
+                self.assertEqual(CHUNK_TEXTS[1] in second_prompt, 1 in kept)
+                self.assertTrue(second_prompt.endswith(f"Question: {QUESTION}"))
+                system = mocks.generator.call_args_list[1].kwargs["system"]
+                self.assertTrue(system.startswith(generator.SYSTEM_PROMPT))
+                self.assertIn("Correction: an evaluator reviewed a previous answer", system)
 
     def test_retry_size_respects_the_requested_k(self):
         for k, expected in ((3, RETRY_TOP_K), (12, 12)):

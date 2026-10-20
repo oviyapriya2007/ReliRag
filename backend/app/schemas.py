@@ -105,6 +105,11 @@ class QueryResponse(BaseModel):
     status: str | None
     final_answer: str | None
     final_attempt_number: int | None = None
+    selection_reason: str | None = Field(
+        default=None,
+        description="Why `final_attempt_number` is the reported attempt, derived from the recorded "
+                    "attempts with the attempt-selection rules; null when no final attempt is "
+                    "recorded.")
     attempts: list[QueryAttempt]
 
 
@@ -145,8 +150,10 @@ class ScoreAverages(BaseModel):
 
 
 class LatencySummary(BaseModel):
-    queries: int = Field(description="Queries with any recorded Claude latency (the avg_total_ms "
-                                     "denominator); gate rejections without a Claude call are excluded.")
+    queries: int = Field(description="Queries with any recorded Claude latency, the denominator of "
+                                     "all three averages; gate rejections without a Claude call "
+                                     "are excluded. A part with no recorded time counts as 0 ms, "
+                                     "so avg_generation_ms + avg_evaluation_ms = avg_total_ms.")
     avg_generation_ms: float | None = Field(
         description="Per query, the summed answer-generation latency of all attempts.")
     avg_evaluation_ms: float | None = Field(
@@ -161,6 +168,9 @@ class ModeSummary(BaseModel):
     first_pass: RateMetric = Field(
         description="Attempt 1 passed its latest evaluation, out of queries whose attempt 1 has a "
                     "usable evaluation.")
+    final_pass: RateMetric = Field(
+        description="The reported attempt (final_attempt_number) passed its latest evaluation, out "
+                    "of queries whose reported attempt has a usable evaluation.")
     insufficient_evidence: int = Field(description="Queries whose final status is INSUFFICIENT_EVIDENCE.")
     first_attempt_scores: ScoreAverages
     final_scores: ScoreAverages = Field(description="Scores of the attempt each query reports.")

@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.models import Query
 from app.services.llm import LLMError
 from app.services.query_pipeline import (
-    ERROR,
     create_query,
     execute_basic_query,
     execute_reli_rag,
+    record_failure,
 )
 from app.services.retrieval import DEFAULT_TOP_K, RetrievedChunk, retrieve
 
@@ -44,9 +44,9 @@ def run_compare(
     Retrieves once, creates one `queries` row per mode (linked by `options["compare_id"]`,
     and tagged with `benchmark_run_id` if given), then runs both pipelines concurrently,
     each in its own session, so each branch gates, generates, and evaluates independently
-    from the same chunks. A branch that raises is logged, its query is marked ERROR if the
-    pipeline did not already decide its status, and its error is returned in `errors`; the
-    other branch is unaffected.
+    from the same chunks. A branch that raises is logged, its query is marked ERROR (see
+    `record_failure`) if the pipeline did not already decide its status, and its error is
+    returned in `errors`; the other branch is unaffected.
     """
     chunks = retrieve(db, question, k=k, document_ids=document_ids)
     compare_id = uuid4().hex
@@ -85,13 +85,5 @@ def _run_branch(
                                query_id, exc)
             else:
                 logger.exception("Compare branch failed for query_id=%s", query_id)
-            try:
-                db.rollback()
-                query = db.get(Query, query_id)
-                if query is not None and query.final_status is None:
-                    query.final_status = ERROR
-                    db.commit()
-            except Exception:
-                db.rollback()
-                logger.exception("Could not mark compare branch query_id=%s as ERROR", query_id)
+            record_failure(db, query_id)
             return str(exc) or type(exc).__name__

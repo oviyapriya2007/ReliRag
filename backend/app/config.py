@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # Evaluator; evaluator_model falls back to claude_model when unset.
     evaluator_model: str | None = None
     evaluator_max_tokens: int = Field(default=2048, gt=0)
-    evaluator_pass_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
+    evaluator_pass_threshold: float = Field(default=0.70, ge=0.0, le=1.0)
     evaluator_max_parse_attempts: int = Field(default=2, ge=1)
 
     # Ingestion. The embedding model must output 384-dimensional vectors (models.EMBEDDING_DIM).
