@@ -201,9 +201,11 @@ class EvaluationsEndpointTest(unittest.TestCase):
         # Ranked by the attempt's retrieval: chunk 2 (hostile) first, then chunk 1 (policy).
         self.assertEqual([d["document_id"] for d in item["documents"]],
                          [self.hostile, self.policy])
+        # Claims saved without verification details (as before they were recorded) return null.
         self.assertEqual(item["claims"], [{"claim_text": "claim 0", "verdict": SUPPORTED,
                                            "evidence_chunk_id": self.chunk_ids[0],
-                                           "evidence_quote": "a"}])
+                                           "evidence_quote": "a", "claude_verdict": None,
+                                           "evidence_error": None, "check_name": None}])
 
     def test_latest_only_false_includes_superseded_evaluations(self):
         ids = self.seed()

@@ -3,7 +3,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -15,8 +15,11 @@ from app.services.corrector import (
     STRICT,
     RewriteResult,
     choose_correction,
-    rejected_claim_texts,
+    claims_to_reject,
+    failure_signals,
+    retry_top_k,
     rewrite_query,
+    supporting_chunks,
 )
 from app.services.evaluator import EVALUATOR_ERROR, EvaluationResult, evaluate_answer
 from app.services.generator import (
@@ -59,7 +62,7 @@ def create_query(
     """
     options: dict[str, Any] = {"k": k}
     if mode == "reli":
-        options["retry_k"] = RETRY_TOP_K
+        options["retry_k"] = retry_top_k(k)
     options["document_ids"] = list(document_ids) if document_ids is not None else None
     options["similarity_gate"] = settings.similarity_gate
     options.update(extra_options or {})
@@ -75,6 +78,12 @@ def _run_settings(query: Query) -> tuple[int, list[int] | None, float]:
     return options["k"], options["document_ids"], options["similarity_gate"]
 
 
+def _retry_k(query: Query) -> int:
+    """The REWRITE retry size recorded for `query`, never below its `k`."""
+    options = query.options
+    return max(options["k"], options.get("retry_k") or retry_top_k(options["k"]))
+
+
 def run_basic_query(
     db: Session,
     question: str,
@@ -86,7 +95,8 @@ def run_basic_query(
     """Run basic RAG for one question: retrieve + gate (A2), generate (A4), then evaluate.
 
     Every step is persisted. If the gate fails, Claude is not called. If the Claude call
-    fails, the attempt and query are marked ERROR and the `LLMError` is re-raised.
+    fails, the attempt and query are marked ERROR and the `LLMError` is re-raised; any other
+    failure (e.g. in retrieval) also marks the query ERROR and is re-raised.
     An ANSWERED attempt is evaluated after it is committed; evaluation never changes the
     answer or its status, and evaluation failures are saved as `evaluator_error`.
     `chunks`, if given, replace the retrieval (see `execute_basic_query`).
@@ -103,18 +113,17 @@ def execute_basic_query(
     `chunks`, if given, are an already retrieved result for `query.question`, used instead
     of retrieving again; they are still gated and logged.
     """
+    query_id = query.id
     k, document_ids, threshold = _run_settings(query)
     try:
         attempt = run_attempt(
             db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold,
             chunks=chunks,
         )
-    except LLMError:
-        query.final_status = ERROR
-        db.commit()
+    except Exception:
+        record_failure(db, query_id)
         raise
-    query.final_status = attempt.answer.status
-    db.commit()
+    set_final_attempt(db, query, 1, attempt.answer.status)
 
     if attempt.answer.status == ANSWERED:
         save_evaluation(
@@ -135,16 +144,17 @@ def run_reli_rag(
     """Run RELI-RAG: attempt 1 as in basic mode, then at most one corrective attempt.
 
     Attempt 1 is retrieved, gated, generated, and evaluated as in `run_basic_query` and is
-    committed as the final attempt before any correction starts. A Claude failure on attempt 1
-    marks the query ERROR and re-raises the `LLMError`. Gate rejections, refusals, passing
-    evaluations, and `evaluator_error` are not retried.
+    committed as the final attempt before any correction starts. Any failure on attempt 1
+    marks the query ERROR and is re-raised (an `LLMError` for a Claude failure). Gate
+    rejections, refusals, passing evaluations, and `evaluator_error` are not retried.
 
-    Otherwise `choose_correction` picks one retry: REWRITE (rewrite the question from the
-    evaluator feedback and retrieve again with RETRY_TOP_K chunks) or STRICT (regenerate from
-    the same chunks, listing the rejected claims). Attempt 2 is evaluated on its own and
-    `select_final_attempt` decides which attempt the query reports. Only saved evaluations
-    count, so the stored record always explains the choice. A failure during attempt 2 is
-    logged and leaves attempt 1 as the final attempt.
+    Otherwise `choose_correction` picks one retry from all of the evaluation's failure
+    signals: REWRITE (rewrite the question from the evaluator feedback, retrieve again with
+    the retry size, keep attempt 1's verified evidence, and avoid any rejected claims) or
+    STRICT (regenerate from the same chunks, listing the rejected claims). Attempt 2 is
+    evaluated on its own and `select_final_attempt` decides which attempt the query reports.
+    Only saved evaluations count, so the stored record always explains the choice. A failure
+    during attempt 2 is logged and leaves attempt 1 as the final attempt.
     `chunks`, if given, replace attempt 1's retrieval (see `execute_reli_rag`).
     """
     query = create_query(db, question, mode="reli", k=k, document_ids=document_ids)
@@ -169,8 +179,8 @@ def execute_reli_rag(
             db, query, attempt_number=1, k=k, document_ids=document_ids, threshold=threshold,
             chunks=chunks,
         )
-    except LLMError:
-        set_final_attempt(db, query, 1, ERROR)
+    except Exception:
+        record_failure(db, query_id)
         raise
     set_final_attempt(db, query, 1, first.answer.status)
     if first.answer.status != ANSWERED:
@@ -186,13 +196,15 @@ def execute_reli_rag(
         if strategy == STRICT:
             second = run_strict_attempt(
                 db, first.answer, attempt_number=2,
-                rejected_claims=rejected_claim_texts(first_evaluation.claims),
+                rejected_claims=claims_to_reject(first_evaluation),
             )
         else:
             second = run_rewrite_attempt(
                 db, query, attempt_number=2, feedback=first_evaluation.feedback,
-                failure_type=first_evaluation.failure_type,
-                document_ids=document_ids, threshold=threshold,
+                failure_type=failure_signals(first_evaluation),
+                k=_retry_k(query), document_ids=document_ids, threshold=threshold,
+                carry_over=supporting_chunks(first.chunks, first_evaluation.claims),
+                rejected_claims=claims_to_reject(first_evaluation),
             )
         second_evaluation = None
         if second.answer.status == ANSWERED:
@@ -238,6 +250,42 @@ def set_final_attempt(db: Session, query: Query, attempt_number: int, status: st
     db.commit()
 
 
+def record_failure(db: Session, query_id: int) -> None:
+    """Mark a query whose run raised as ERROR, unless it already has a final status.
+
+    Attempt 1 becomes the final attempt if its row exists. `db` is rolled back first; if it
+    still cannot be used, a new session on the same connection is used instead. Never
+    raises, so the caller re-raises the original exception.
+    """
+    try:
+        db.rollback()
+        _mark_error(db, query_id)
+        return
+    except Exception:
+        logger.exception("Could not mark query_id=%s as ERROR; retrying in a new session",
+                         query_id)
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Rollback failed for query_id=%s", query_id)
+    try:
+        with Session(bind=db.get_bind(), autoflush=False, expire_on_commit=False) as fresh:
+            _mark_error(fresh, query_id)
+    except Exception:
+        logger.exception("Could not mark query_id=%s as ERROR", query_id)
+
+
+def _mark_error(db: Session, query_id: int) -> None:
+    query = db.get(Query, query_id)
+    if query is None or query.final_status is not None:
+        return
+    first = db.scalar(select(Answer.attempt_number)
+                      .where(Answer.query_id == query_id, Answer.attempt_number == 1))
+    query.final_status = ERROR
+    query.final_attempt_number = first
+    db.commit()
+
+
 def run_attempt(
     db: Session,
     query: Query,
@@ -249,6 +297,8 @@ def run_attempt(
     threshold: float | None = None,
     strategy: str | None = None,
     chunks: Sequence[RetrievedChunk] | None = None,
+    carry_over: Sequence[RetrievedChunk] = (),
+    strict_instructions: str | None = None,
 ) -> AttemptResult:
     """Retrieve, gate, and generate one answer attempt for `query.question`.
 
@@ -256,15 +306,19 @@ def run_attempt(
     `query.final_status`, so a failing later attempt cannot overwrite an earlier result.
     If the gate fails, Claude is not called and the attempt is INSUFFICIENT_EVIDENCE.
     If the Claude call fails, the attempt is marked ERROR and the `LLMError` is re-raised.
-    `chunks`, if given, are used instead of retrieving (see `retrieve_with_gate`).
+    `chunks`, if given, are used instead of retrieving, and `carry_over` chunks from an
+    earlier attempt are merged in after the gate (see `retrieve_with_gate`). The answer is
+    generated from exactly the logged chunks, with `strict_instructions` if given.
     """
     gate = retrieve_with_gate(
         db, query, retrieval_query=retrieval_query, attempt_number=attempt_number,
         k=k, document_ids=document_ids, threshold=threshold, strategy=strategy, chunks=chunks,
+        carry_over=carry_over,
     )
     answer = db.get(Answer, gate.answer_id)
     if gate.passed:
-        generate_into(db, answer, query.question, gate.chunks)
+        generate_into(db, answer, query.question, gate.chunks,
+                      strict_instructions=strict_instructions)
     return AttemptResult(answer=answer, chunks=gate.chunks)
 
 
@@ -274,22 +328,29 @@ def run_rewrite_attempt(
     *,
     attempt_number: int,
     feedback: str | None,
-    failure_type: str | None,
+    failure_type: str | Sequence[str] | None,
     k: int = RETRY_TOP_K,
     document_ids: Sequence[int] | None = None,
     threshold: float | None = None,
+    carry_over: Sequence[RetrievedChunk] = (),
+    rejected_claims: Sequence[str] = (),
 ) -> AttemptResult:
     """Rewrite the question from evaluator feedback, then retrieve again and generate.
 
     The rewritten query is used only for retrieval (it is saved as the attempt's
     `retrieval_query`); the answer is still generated for `query.question`. A rejected
     rewrite falls back to the original question, retrieved with the larger `k`.
+    `failure_type` is one failure type or all of the evaluation's failure signals.
+    `carry_over` (attempt 1's verified evidence) is merged with the new retrieval once it
+    passes the gate, and `rejected_claims`, if any, are passed as strict instructions.
     Same guarantees as `run_attempt`: earlier attempts and `query.final_status` are untouched.
     """
     rewrite = rewrite_query(query.question, feedback, failure_type=failure_type)
+    strict_instructions = build_strict_instructions(rejected_claims) if rejected_claims else None
     attempt = run_attempt(
         db, query, attempt_number=attempt_number, retrieval_query=rewrite.query,
         k=k, document_ids=document_ids, threshold=threshold, strategy=REWRITE,
+        carry_over=carry_over, strict_instructions=strict_instructions,
     )
     return replace(attempt, rewrite=rewrite)
 
@@ -411,33 +472,37 @@ def run_evaluation(
 def save_evaluation(db: Session, answer: Answer, result: EvaluationResult) -> Evaluation | None:
     """Insert one `evaluations` row with its `claims` and commit.
 
-    Claims keep the evaluator's final (verified) verdicts and real chunk IDs. A database
-    failure is rolled back and logged, leaving the committed answer untouched.
+    Claims keep the evaluator's final (verified) verdicts and real chunk IDs, with Claude's
+    original verdict, the reason a check changed it, and which check (`check_name`). A failure
+    is rolled back and logged, leaving the committed answer untouched.
     """
     answer_id = answer.id
-    evaluation = Evaluation(
-        answer=answer,
-        faithfulness=result.faithfulness,
-        answer_relevance=result.answer_relevance,
-        context_relevance=result.context_relevance,
-        passed=result.passed,
-        failure_type=result.failure_type,
-        feedback=result.feedback,
-        model=result.model,
-        latency_ms=result.latency_ms,
-        input_tokens=result.input_tokens,
-        output_tokens=result.output_tokens,
-        claims=[
-            Claim(
-                claim_text=claim.claim_text,
-                verdict=claim.verdict,
-                evidence_chunk_id=claim.evidence_chunk_id,
-                evidence_quote=claim.evidence_quote,
-            )
-            for claim in result.claims
-        ],
-    )
     try:
+        evaluation = Evaluation(
+            answer=answer,
+            faithfulness=result.faithfulness,
+            answer_relevance=result.answer_relevance,
+            context_relevance=result.context_relevance,
+            passed=result.passed,
+            failure_type=result.failure_type,
+            feedback=result.feedback,
+            model=result.model,
+            latency_ms=result.latency_ms,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            claims=[
+                Claim(
+                    claim_text=claim.claim_text,
+                    verdict=claim.verdict,
+                    evidence_chunk_id=claim.evidence_chunk_id,
+                    evidence_quote=claim.evidence_quote,
+                    claude_verdict=claim.claude_verdict,
+                    evidence_error=claim.evidence_error,
+                    check_name=claim.check,
+                )
+                for claim in result.claims
+            ],
+        )
         db.add(evaluation)
         db.commit()
     except Exception:

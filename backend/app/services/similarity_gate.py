@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Answer, Query, RetrievalLog
-from app.services.retrieval import DEFAULT_TOP_K, RetrievedChunk, retrieve
+from app.services.retrieval import DEFAULT_TOP_K, RetrievedChunk, merge_ranked_chunks, retrieve
 
 INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
 
@@ -38,6 +38,7 @@ def retrieve_with_gate(
     threshold: float | None = None,
     strategy: str | None = None,
     chunks: Sequence[RetrievedChunk] | None = None,
+    carry_over: Sequence[RetrievedChunk] = (),
 ) -> GateResult:
     """Retrieve chunks for one answer attempt, log them, and apply the similarity gate.
 
@@ -46,6 +47,11 @@ def retrieve_with_gate(
     and no answer should be generated. `query.final_status` is never changed here; the
     pipeline decides it. `chunks`, if given, are an already retrieved result (in rank order)
     for `retrieval_query`; they are gated and logged the same way, without retrieving again.
+
+    `carry_over` are chunks kept from an earlier attempt (in that attempt's rank order). The
+    gate is applied to this attempt's own retrieval only, since carried similarities were
+    scored against a different query; if it passes, the carried chunks are merged in (see
+    `merge_ranked_chunks`) and the merged list is what gets logged and returned.
     """
     if threshold is None:
         threshold = settings.similarity_gate
@@ -56,6 +62,9 @@ def retrieve_with_gate(
     else:
         chunks = list(chunks)
     passed = passes_gate(chunks, threshold)
+    top_similarity = chunks[0].similarity if chunks else None
+    if passed and carry_over:
+        chunks = merge_ranked_chunks(chunks, carry_over)
     status = None if passed else INSUFFICIENT_EVIDENCE
 
     try:
@@ -92,7 +101,7 @@ def retrieve_with_gate(
         answer_id=answer.id,
         passed=passed,
         status=status,
-        top_similarity=chunks[0].similarity if chunks else None,
+        top_similarity=top_similarity,
         threshold=threshold,
         chunks=chunks,
     )

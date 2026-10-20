@@ -209,8 +209,13 @@ class QueryStatusTest(unittest.TestCase):
                 "verdict": SUPPORTED,
                 "evidence_chunk_id": self.chunk_id,
                 "evidence_quote": "reliable, ordered byte stream",
+                "claude_verdict": SUPPORTED,
+                "evidence_error": None,
+                "check_name": None,
             }],
         })
+        self.assertEqual((saved_claim.claude_verdict, saved_claim.evidence_error,
+                          saved_claim.check_name), (SUPPORTED, None, None))
         self.assertEqual(attempt["timings"]["evaluate_ms"], evaluation.latency_ms)
         self.assertEqual(attempt["timings"]["generate_ms"], 5)
 
@@ -391,6 +396,227 @@ class QueryStatusTest(unittest.TestCase):
             self.assertEqual(query.final_status, ERROR)
             self.assertEqual([(a.attempt_number, a.status) for a in answers], [(1, ERROR)])
         self.assertEqual(self.saved_evaluations(query.id), [])
+
+    def test_inline_refusal_token_is_removed_from_an_answer(self):
+        cases = {
+            f"{ANSWER_TEXT} Its history is not covered [INSUFFICIENT_EVIDENCE].":
+                f"{ANSWER_TEXT} Its history is not covered.",
+            f"{ANSWER_TEXT} Its history is **INSUFFICIENT_EVIDENCE** here.":
+                f"{ANSWER_TEXT} Its history is here.",
+            f"{ANSWER_TEXT}\n\nHistory: (INSUFFICIENT_EVIDENCE)":
+                f"{ANSWER_TEXT}\n\nHistory:",
+            f"{ANSWER_TEXT} __INSUFFICIENT_EVIDENCE__":
+                ANSWER_TEXT,
+        }
+        for claude_text, expected in cases.items():
+            with self.subTest(claude_text=claude_text):
+                body, _, evaluator = self.post_query(0.9, claude_text)
+
+                self.assert_status_consistent(body, ANSWERED)
+                self.assertEqual(body["final_answer"], expected)
+                self.assertEqual(body["attempts"][0]["citations"], [1])
+                evaluated_answer = evaluator.call_args.args[0].split("<answer>\n", 1)[1]
+                self.assertNotIn(INSUFFICIENT_EVIDENCE, evaluated_answer)
+
+    def test_reply_of_only_refusal_tokens_is_insufficient_evidence(self):
+        for text in ("[INSUFFICIENT_EVIDENCE]", "(INSUFFICIENT_EVIDENCE)."):
+            with self.subTest(claude_text=text):
+                body, _, evaluator = self.post_query(0.9, text)
+
+                evaluator.assert_not_called()
+                self.assert_status_consistent(body, INSUFFICIENT_EVIDENCE)
+                self.assertEqual(body["final_answer"], NOT_SUPPORTED_MESSAGE)
+
+    def test_refusal_stop_reason_with_leading_token_is_still_a_refusal(self):
+        with patch("app.services.similarity_gate.retrieve", return_value=self.retrieved(0.9)), \
+             patch("app.services.generator.call_claude", return_value=LLMResult(
+                 text="INSUFFICIENT_EVIDENCE", model=MODEL, input_tokens=100, output_tokens=5,
+                 latency_ms=5, stop_reason="refusal", attempts=1)), \
+             patch("app.services.evaluator.call_claude") as evaluator:
+            response = self.client.post("/query", json={"question": "What is TCP?"})
+
+        self.assertEqual(response.status_code, 200, response.text)
+        evaluator.assert_not_called()
+        self.assert_status_consistent(response.json(), INSUFFICIENT_EVIDENCE)
+
+    def test_empty_or_refused_generation_is_an_error_not_an_answer(self):
+        replies = {
+            "empty": ("", "end_turn"),
+            "whitespace": ("  \n\t ", "end_turn"),
+            "punctuation only": ("...", "end_turn"),
+            "classifier refusal, no text": ("", "refusal"),
+            "classifier refusal, only token": ("[INSUFFICIENT_EVIDENCE]", "refusal"),
+        }
+        for name, (text, stop_reason) in replies.items():
+            with self.subTest(name), \
+                 patch("app.services.similarity_gate.retrieve", return_value=self.retrieved(0.9)), \
+                 patch("app.services.generator.call_claude", return_value=LLMResult(
+                     text=text, model=MODEL, input_tokens=100, output_tokens=0, latency_ms=5,
+                     stop_reason=stop_reason, attempts=1)), \
+                 patch("app.services.evaluator.call_claude") as evaluator:
+                response = self.client.post("/query", json={"question": f"What is TCP? {name}"})
+
+                self.assertEqual(response.status_code, 502, response.text)
+                self.assertIn("no usable answer", response.json()["detail"])
+                evaluator.assert_not_called()
+                with self.Session() as db:
+                    query = db.scalars(select(Query).order_by(Query.id.desc()).limit(1)).one()
+                    answers = db.scalars(select(Answer).where(Answer.query_id == query.id)).all()
+                    self.assertEqual((query.final_status, query.final_attempt_number), (ERROR, 1))
+                    self.assertEqual([(a.status, a.answer_text) for a in answers], [(ERROR, None)])
+
+    def post_generation(self, replies):
+        """POST /query with the generator's Claude returning `replies` (LLMResults) in order."""
+        with patch.object(settings, "claude_max_tokens", 1024), \
+             patch("app.services.similarity_gate.retrieve", return_value=self.retrieved(0.9)), \
+             patch("app.services.generator.call_claude", side_effect=replies) as claude, \
+             patch("app.services.evaluator.call_claude") as evaluator:
+            evaluator.return_value = llm_result(evaluator_reply(self.passing_claims()))
+            response = self.client.post("/query", json={"question": "What is TCP?"})
+        budgets = [call.kwargs["max_tokens"] for call in claude.call_args_list]
+        return response, budgets, evaluator
+
+    @staticmethod
+    def generated(text: str, stop_reason: str, output_tokens: int = 20) -> LLMResult:
+        return LLMResult(text=text, model=MODEL, input_tokens=100, output_tokens=output_tokens,
+                         latency_ms=5, stop_reason=stop_reason, attempts=1)
+
+    def latest_query(self) -> tuple[Query, list[Answer]]:
+        with self.Session() as db:
+            query = db.scalars(select(Query).order_by(Query.id.desc()).limit(1)).one()
+            return query, db.scalars(select(Answer).where(Answer.query_id == query.id)).all()
+
+    def test_truncated_answer_is_retried_with_a_larger_budget(self):
+        response, budgets, evaluator = self.post_generation([
+            self.generated("TCP provides a reliable, ordered", "max_tokens", 1024),
+            self.generated(ANSWER_TEXT, "end_turn"),
+        ])
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assert_status_consistent(body, ANSWERED)
+        self.assertEqual(body["final_answer"], ANSWER_TEXT)
+        self.assertEqual(budgets, [None, 2048])
+        evaluator.assert_called_once()
+        _, [answer] = self.latest_query()
+        self.assertEqual((answer.input_tokens, answer.output_tokens), (200, 1044))
+
+    def test_persistently_truncated_answer_is_an_error_not_an_answer(self):
+        cut = self.generated("TCP provides a reliable, ordered", "max_tokens", 1024)
+        response, budgets, evaluator = self.post_generation([cut, cut, cut])
+
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertIn("cut off", response.json()["detail"])
+        self.assertEqual(budgets, [None, 2048, 4096])
+        evaluator.assert_not_called()
+        query, answers = self.latest_query()
+        self.assertEqual(query.final_status, ERROR)
+        self.assertEqual([(a.status, a.answer_text) for a in answers], [(ERROR, None)])
+
+    def test_truncated_refusal_is_still_a_refusal(self):
+        response, budgets, evaluator = self.post_generation([
+            self.generated("INSUFFICIENT_EVIDENCE\n\nThe passages discuss TCP but", "max_tokens")])
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assert_status_consistent(response.json(), INSUFFICIENT_EVIDENCE)
+        self.assertEqual(budgets, [None])
+        evaluator.assert_not_called()
+
+    def test_context_window_overflow_is_an_error(self):
+        response, budgets, _ = self.post_generation([
+            self.generated("TCP provides", "model_context_window_exceeded")])
+
+        self.assertEqual(response.status_code, 502, response.text)
+        self.assertEqual(budgets, [None])
+        query, answers = self.latest_query()
+        self.assertEqual((query.final_status, [a.status for a in answers]), (ERROR, [ERROR]))
+
+    def test_claim_verification_details_are_persisted(self):
+        answer = ("TCP provides a reliable, ordered byte stream [1]. TCP was invented in 1974 [1]. "
+                  "TCP uses sequence numbers [1]. UDP sends independent datagrams quickly. "
+                  "Ordered delivery of the byte stream is guaranteed [9].")
+        reply = json.dumps({
+            "claims": [
+                claim("TCP provides a reliable, ordered byte stream.", SUPPORTED, self.chunk_id,
+                      "reliable, ordered byte stream"),
+                claim("TCP was invented in 1974.", SUPPORTED, self.chunk_id, "TCP provides"),
+                claim("TCP uses sequence numbers.", SUPPORTED, self.chunk_id,
+                      "TCP uses sequence numbers"),
+                claim("Ordered delivery of the byte stream is guaranteed.", SUPPORTED,
+                      self.chunk_id, "ordered byte stream"),
+            ],
+            "limitations": ["TCP was standardized in 1981."],
+            "answer_relevance": 0.9, "context_relevance": 0.9, "feedback": "Checked.",
+        })
+        body, _, _ = self.post_query(0.9, answer, [reply])
+
+        expected = [
+            ("TCP provides a reliable, ordered byte stream.", SUPPORTED, SUPPORTED, None),
+            ("TCP was invented in 1974.", UNSUPPORTED, SUPPORTED, "support"),
+            ("TCP uses sequence numbers.", UNSUPPORTED, SUPPORTED, "evidence"),
+            ("Ordered delivery of the byte stream is guaranteed.", "partially_supported",
+             SUPPORTED, "citation"),
+            ("TCP was standardized in 1981.", UNSUPPORTED, None, "limitation"),
+            ("UDP sends independent datagrams quickly.", UNSUPPORTED, None, "uncited"),
+        ]
+        api_claims = body["attempts"][0]["evaluation"]["claims"]
+        self.assertEqual([(c["claim_text"], c["verdict"], c["claude_verdict"], c["check_name"])
+                          for c in api_claims], expected)
+        for api_claim in api_claims:
+            self.assertEqual(api_claim["evidence_error"] is None, api_claim["check_name"] is None)
+        self.assertIn("1974", api_claims[1]["evidence_error"])
+        self.assertIn("[9]", api_claims[3]["evidence_error"])
+
+        [evaluation] = self.saved_evaluations(body["query_id"])
+        self.assertEqual([(c.claim_text, c.verdict, c.claude_verdict, c.check_name)
+                          for c in evaluation.claims], expected)
+        self.assertEqual([c.evidence_error for c in evaluation.claims],
+                         [c["evidence_error"] for c in api_claims])
+        listed = self.client.get("/evaluations").json()["items"][0]["claims"]
+        self.assertEqual(listed, api_claims)
+
+    def test_check_name_is_validated(self):
+        from typing import get_args
+
+        from app.models import CLAIM_CHECK_NAMES, Claim
+        from app.schemas import ClaimCheckName
+        from app.services.evaluator import ClaimVerdict, EvaluationResult
+        from app.services.query_pipeline import save_evaluation
+
+        self.assertEqual(set(get_args(ClaimCheckName)), set(CLAIM_CHECK_NAMES))
+        with self.assertRaises(ValueError):
+            Claim(claim_text="x", verdict=UNSUPPORTED, check_name="other")
+        with self.assertRaises(ValueError):
+            ClaimVerdict("x", UNSUPPORTED, None, None, None, "why", "other")
+
+        body, _, _ = self.post_query(0.9, ANSWER_TEXT)
+        bad_claim = type("BadClaim", (), {"claim_text": "x", "verdict": UNSUPPORTED,
+                                          "evidence_chunk_id": None, "evidence_quote": None,
+                                          "claude_verdict": None, "evidence_error": "why",
+                                          "check": "other"})()
+        result = EvaluationResult(faithfulness=0.0, answer_relevance=0.9, context_relevance=0.9,
+                                  passed=False, failure_type=UNSUPPORTED_CLAIM, feedback="x",
+                                  claims=[bad_claim], model=MODEL, input_tokens=1,
+                                  output_tokens=1, latency_ms=1, llm_calls=1)
+        with self.Session() as db:
+            answer = db.scalars(select(Answer).where(Answer.query_id == body["query_id"])).one()
+            self.assertIsNone(save_evaluation(db, answer, result))
+        self.assertEqual(len(self.saved_evaluations(body["query_id"])), 1)
+
+    def test_basic_query_stores_the_final_attempt_it_reports(self):
+        expected_keys = {"query_id", "question", "mode", "created_at", "status", "final_answer",
+                         "final_attempt_number", "attempts"}
+        for similarity, claude_text, status in ((0.9, ANSWER_TEXT, ANSWERED),
+                                                (0.9, INSUFFICIENT_EVIDENCE, INSUFFICIENT_EVIDENCE),
+                                                (0.05, None, INSUFFICIENT_EVIDENCE)):
+            with self.subTest(status=status, similarity=similarity):
+                body, _, _ = self.post_query(similarity, claude_text)
+
+                self.assertEqual(set(body), expected_keys)
+                self.assertEqual(body["final_attempt_number"], 1)
+                with self.Session() as db:
+                    query = db.get(Query, body["query_id"])
+                    self.assertEqual((query.final_status, query.final_attempt_number), (status, 1))
 
     def run_later_attempt(self, query_id: int, attempt_number: int, similarity: float,
                           claude_error: LLMError | None = None):

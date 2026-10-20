@@ -59,7 +59,8 @@ CHUNK_TEXTS = [
     "Policy 3. Item A has an allowance of 200 units per year.",
 ]
 FIRST_ANSWER = "Members may request item A after approval [1]."
-SECOND_ANSWER = "Item A has an allowance of 200 units per year [1]."
+# The correction keeps attempt 1's evidence (chunk 1) first, so chunk 3 is passage [2].
+SECOND_ANSWER = "Item A has an allowance of 200 units per year [2]."
 BASIC_OPTION_KEYS = {"k", "document_ids", "similarity_gate"}
 
 
@@ -357,7 +358,7 @@ class CompareTest(unittest.TestCase):
             query = run_basic_query(db, QUESTION, k=3)
             retrieve.assert_called_once()
             self.assertEqual(retrieve.call_args.kwargs, {"k": 3, "document_ids": None})
-            self.assertEqual((query.final_status, query.final_attempt_number), (ANSWERED, None))
+            self.assertEqual((query.final_status, query.final_attempt_number), (ANSWERED, 1))
 
 
 if __name__ == "__main__":

@@ -48,11 +48,22 @@ class RetrievalResult(BaseModel):
     content: str
 
 
+ClaimCheckName = Literal["evidence", "support", "citation", "uncited", "limitation"]
+
+
 class ClaimRead(BaseModel):
     claim_text: str
     verdict: str | None
     evidence_chunk_id: int | None
     evidence_quote: str | None
+    claude_verdict: str | None = Field(
+        default=None, description="Claude's verdict before the deterministic checks; null for a "
+                                  "claim a check added, and for claims saved before this was "
+                                  "recorded.")
+    evidence_error: str | None = Field(
+        default=None, description="Why a check changed the claim's verdict, if one did.")
+    check_name: ClaimCheckName | None = Field(
+        default=None, description="Which check changed the claim's verdict, if one did.")
 
 
 class EvaluationRead(BaseModel):

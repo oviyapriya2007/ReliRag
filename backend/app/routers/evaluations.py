@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db import get_db
 from app.models import Answer, Document, DocumentChunk, Evaluation, RetrievalLog
 from app.models import Query as StoredQuery
+from app.routers.query import claim_read
 from app.schemas import ClaimRead
 from app.services.evaluator import EVALUATOR_ERROR, PARTIALLY_SUPPORTED, SUPPORTED, UNSUPPORTED
 
@@ -203,12 +204,7 @@ def _load_items(
             output_tokens=evaluation.output_tokens,
             is_latest=bool(latest),
             documents=documents.get(answer.id, []),
-            claims=[
-                ClaimRead(claim_text=claim.claim_text, verdict=claim.verdict,
-                          evidence_chunk_id=claim.evidence_chunk_id,
-                          evidence_quote=claim.evidence_quote)
-                for claim in evaluation.claims
-            ],
+            claims=[claim_read(claim) for claim in evaluation.claims],
         )
         for evaluation, answer, query, latest in rows
     ]

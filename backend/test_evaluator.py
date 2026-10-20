@@ -34,10 +34,12 @@ from app.config import Settings, settings  # noqa: E402
 from app.services.evaluator import (  # noqa: E402
     EVALUATOR_ERROR,
     IRRELEVANT_RETRIEVAL,
+    MAX_EVALUATOR_TOKENS,
     MISSING_INFO,
     PARTIALLY_SUPPORTED,
     RETRY_INSTRUCTION,
     SUPPORTED,
+    TRUNCATION_INSTRUCTION,
     UNSUPPORTED,
     UNSUPPORTED_CLAIM,
     compute_faithfulness,
@@ -60,10 +62,11 @@ CHUNKS = [
 ]
 
 
-def llm_result(text: str, input_tokens: int = 300, output_tokens: int = 80) -> LLMResult:
+def llm_result(text: str, input_tokens: int = 300, output_tokens: int = 80,
+               stop_reason: str = "end_turn") -> LLMResult:
     return LLMResult(
         text=text, model=MODEL, input_tokens=input_tokens, output_tokens=output_tokens,
-        latency_ms=5, stop_reason="end_turn", attempts=1,
+        latency_ms=5, stop_reason=stop_reason, attempts=1,
     )
 
 
@@ -271,7 +274,8 @@ class EvaluateAnswerTest(unittest.TestCase):
     def test_quote_match_ignores_whitespace_case_and_typographic_quotes(self):
         claims = [claim("TCP provides a reliable byte stream.", SUPPORTED, 41,
                         "tcp provides a reliable,   ordered BYTE stream"),
-                  claim("Handshakes use SYN-ACK.", SUPPORTED, 57, "(SYN, SYN\u2013ACK, ACK)")]
+                  claim("The handshake uses SYN, SYN-ACK, and ACK.", SUPPORTED, 57,
+                        "(SYN, SYN\u2013ACK, ACK)")]
         result, _ = self.evaluate(reply(claims))
 
         self.assertEqual([c.verdict for c in result.claims], [SUPPORTED, SUPPORTED])
@@ -384,6 +388,284 @@ class EvaluatorConfigurationTest(unittest.TestCase):
             third_time, claude = self.evaluate("not json", "still not json", reply())
         self.assertEqual(claude.call_count, 3)
         self.assertTrue(third_time.passed)
+
+
+TCP_FACT = "TCP provides a reliable, ordered byte stream"
+LIMITATION = "The passages do not say how fast TCP is."
+
+
+class StatementChecksTest(unittest.TestCase):
+    """Limitation statements (H2), evidence support (H3), and citations (H6)."""
+
+    def setUp(self):
+        patcher = patch.object(settings, "evaluator_pass_threshold", 0.80)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def evaluate(answer: str, claims, limitations=None, answer_relevance=0.95,
+                 context_relevance=0.9):
+        body = {"claims": claims, "answer_relevance": answer_relevance,
+                "context_relevance": context_relevance, "feedback": "Checked."}
+        if limitations is not None:
+            body["limitations"] = limitations
+        with patch("app.services.evaluator.call_claude",
+                   return_value=llm_result(json.dumps(body))):
+            return evaluate_answer(QUESTION, answer, CHUNKS)
+
+    def tcp_claim(self, verdict=SUPPORTED):
+        return claim(f"{TCP_FACT}.", verdict, 41, TCP_FACT)
+
+    # --- H2: limitation statements -------------------------------------------------------
+
+    def test_limitation_statement_is_not_an_unsupported_claim(self):
+        result = self.evaluate(f"{TCP_FACT} [1]. {LIMITATION}", [self.tcp_claim()], [LIMITATION])
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.faithfulness, 1.0)
+        self.assertEqual([c.claim_text for c in result.claims], [f"{TCP_FACT}."])
+        self.assertIn("1 limitation statement(s) were not scored", result.feedback)
+
+    def test_factual_statement_labeled_a_limitation_is_unsupported(self):
+        for mislabeled in ("TCP was standardized in 1981.",
+                           "The passages do not give a date, but TCP was standardized in 1981."):
+            with self.subTest(mislabeled=mislabeled):
+                result = self.evaluate(f"{TCP_FACT} [1]. {mislabeled}", [self.tcp_claim()],
+                                       [mislabeled])
+
+                self.assertEqual(result.faithfulness, 0.5)
+                self.assertEqual(result.failure_type, UNSUPPORTED_CLAIM)
+                added = result.claims[-1]
+                self.assertEqual((added.claim_text, added.verdict, added.claude_verdict),
+                                 (mislabeled, UNSUPPORTED, None))
+                self.assertIn("labeled as limitations assert facts", result.feedback)
+
+    def test_limitations_do_not_make_an_incomplete_answer_complete(self):
+        only = self.evaluate(LIMITATION, [], [LIMITATION], answer_relevance=0.9)
+        self.assertEqual((only.faithfulness, only.answer_relevance), (1.0, 0.0))
+        self.assertEqual(only.failure_type, MISSING_INFO)
+        self.assertFalse(only.passed)
+
+        partial = self.evaluate(f"{TCP_FACT} [1]. {LIMITATION}", [self.tcp_claim()],
+                                [LIMITATION], answer_relevance=0.5)
+        self.assertEqual(partial.answer_relevance, 0.5)
+        self.assertEqual(partial.failure_type, MISSING_INFO)
+
+    def test_reply_without_claims_or_limitations_is_invalid(self):
+        with patch("app.services.evaluator.call_claude", return_value=llm_result(json.dumps(
+                {"claims": [], "limitations": [], "answer_relevance": 0.9,
+                 "context_relevance": 0.9, "feedback": "x"}))):
+            result = evaluate_answer(QUESTION, ANSWER, CHUNKS)
+        self.assertEqual(result.failure_type, EVALUATOR_ERROR)
+
+    # --- H3: evidence support ------------------------------------------------------------
+
+    def test_quote_that_supports_the_claim_keeps_its_verdict(self):
+        result = self.evaluate(f"{TCP_FACT} [1].", [self.tcp_claim()])
+        self.assertEqual((result.claims[0].verdict, result.claims[0].evidence_error),
+                         (SUPPORTED, None))
+
+    def test_quote_that_exists_but_does_not_support_the_claim(self):
+        cases = {
+            "unrelated quote": (claim("Connections are encrypted with TLS.", SUPPORTED, 57,
+                                      "Connections are opened"), UNSUPPORTED,
+                                "does not support the claim"),
+            "number not in passage": (claim("TCP delivers a reliable byte stream within 5 ms.",
+                                            SUPPORTED, 41, TCP_FACT), UNSUPPORTED,
+                                      "number(s) 5"),
+            "only part supported": (claim(
+                "TCP provides an ordered stream with encryption, compression, multiplexing and "
+                "congestion pricing.", SUPPORTED, 41, TCP_FACT), PARTIALLY_SUPPORTED,
+                "only part of the claim"),
+            "negation differs": (claim("TCP does not provide an ordered byte stream.", SUPPORTED,
+                                       41, TCP_FACT), PARTIALLY_SUPPORTED, "negation"),
+        }
+        for name, (bad_claim, verdict, reason) in cases.items():
+            with self.subTest(name):
+                result = self.evaluate(ANSWER, [bad_claim])
+                judged = result.claims[0]
+                self.assertEqual((judged.verdict, judged.claude_verdict), (verdict, SUPPORTED))
+                self.assertIn(reason, judged.evidence_error)
+                self.assertLess(result.faithfulness, 1.0)
+                if verdict == UNSUPPORTED:
+                    self.assertIsNone(judged.evidence_quote)
+
+    def test_support_checks_never_raise_a_verdict(self):
+        result = self.evaluate(f"{TCP_FACT} [1].", [self.tcp_claim(PARTIALLY_SUPPORTED)])
+        self.assertEqual(result.claims[0].verdict, PARTIALLY_SUPPORTED)
+        self.assertEqual(result.faithfulness, 0.5)
+
+    def test_invalid_or_missing_evidence_is_still_unsupported(self):
+        for bad in (claim(f"{TCP_FACT}.", SUPPORTED, 41, "TCP provides an unordered stream"),
+                    claim(f"{TCP_FACT}.", SUPPORTED, None, None)):
+            with self.subTest(bad=bad):
+                result = self.evaluate(f"{TCP_FACT} [1].", [bad])
+                self.assertEqual(result.claims[0].verdict, UNSUPPORTED)
+                self.assertEqual(result.faithfulness, 0.0)
+
+    # --- H6: citations -------------------------------------------------------------------
+
+    def test_relevant_citations_pass(self):
+        result = self.evaluate(ANSWER, GOOD_CLAIMS)
+        self.assertTrue(result.passed)
+        self.assertEqual([c.verdict for c in result.claims], [SUPPORTED, SUPPORTED])
+
+    def test_citation_of_a_passage_without_the_evidence_is_downgraded(self):
+        result = self.evaluate(f"{TCP_FACT} [2].", [self.tcp_claim()])
+
+        self.assertEqual(result.claims[0].verdict, PARTIALLY_SUPPORTED)
+        self.assertIn("do not contain the evidence", result.claims[0].evidence_error)
+        self.assertFalse(result.passed)
+        self.assertIn("missing, invalid, or unrelated citation", result.feedback)
+
+    def test_invalid_citation_numbers_are_reported_not_ignored(self):
+        answer = f"{TCP_FACT} [7]. UDP has optional extension headers for every packet [9]."
+        result = self.evaluate(answer, [self.tcp_claim()])
+
+        self.assertEqual(result.claims[0].verdict, PARTIALLY_SUPPORTED)
+        self.assertIn("[7]", result.claims[0].evidence_error)
+        added = result.claims[1]
+        self.assertEqual((added.verdict, added.claude_verdict), (UNSUPPORTED, None))
+        self.assertIn("[9]", added.evidence_error)
+        self.assertIn("passage number(s) [7, 9] that do not exist", result.feedback)
+        self.assertFalse(result.passed)
+
+    def test_uncited_factual_statements_are_flagged(self):
+        claimed = self.evaluate(f"{TCP_FACT}.", [self.tcp_claim()])
+        self.assertEqual(claimed.claims[0].verdict, PARTIALLY_SUPPORTED)
+        self.assertIn("no citation", claimed.claims[0].evidence_error)
+
+        unclaimed = self.evaluate(f"{TCP_FACT} [1]. UDP sends independent datagrams quickly.",
+                                  [self.tcp_claim()])
+        added = unclaimed.claims[-1]
+        self.assertEqual((added.claim_text, added.verdict),
+                         ("UDP sends independent datagrams quickly.", UNSUPPORTED))
+        self.assertEqual(unclaimed.faithfulness, 0.5)
+        self.assertIn("without a valid citation", unclaimed.feedback)
+
+    def test_limitations_headings_and_lead_ins_need_no_citation(self):
+        answer = ("Here is what the passages say about transport protocols:\n"
+                  "## Reliable transport\n"
+                  f"{TCP_FACT} [1].\n{LIMITATION}")
+        result = self.evaluate(answer, [self.tcp_claim()], [LIMITATION])
+
+        self.assertEqual(len(result.claims), 1)
+        self.assertTrue(result.passed)
+
+    def test_mixed_answer_scores_only_the_factual_parts(self):
+        answer = (f"{TCP_FACT} [1]. It uses a three-way handshake [1]. {LIMITATION} "
+                  "UDP is always faster than TCP.")
+        result = self.evaluate(answer, GOOD_CLAIMS, [LIMITATION])
+
+        verdicts = {c.claim_text: c.verdict for c in result.claims}
+        self.assertEqual(verdicts["TCP provides a reliable, ordered byte stream."], SUPPORTED)
+        # The handshake evidence is in passage [2], but the sentence cites [1].
+        self.assertEqual(verdicts["TCP uses a three-way handshake."], PARTIALLY_SUPPORTED)
+        self.assertEqual(verdicts["UDP is always faster than TCP."], UNSUPPORTED)
+        self.assertNotIn(LIMITATION, verdicts)
+        self.assertAlmostEqual(result.faithfulness, 1.5 / 3)
+
+
+class TruncationAndExtractionTest(unittest.TestCase):
+    """Evaluator replies cut off at the token budget, and JSON embedded in prose."""
+
+    def setUp(self):
+        for name, value in {"evaluator_max_tokens": 2048, "evaluator_max_parse_attempts": 2,
+                            "evaluator_pass_threshold": 0.80}.items():
+            patcher = patch.object(settings, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def evaluate(self, *replies, **kwargs):
+        """Claude returns `replies` in order: LLMResults, exceptions, or text (end_turn)."""
+        with patch("app.services.evaluator.call_claude") as claude:
+            claude.side_effect = [r if isinstance(r, (LLMResult, Exception)) else llm_result(r)
+                                  for r in replies]
+            result = evaluate_answer(QUESTION, ANSWER, CHUNKS, **kwargs)
+        return result, claude
+
+    @staticmethod
+    def truncated(text: str = '{"claims": [{"claim_text": "TCP provides a rel') -> LLMResult:
+        return llm_result(text, output_tokens=2048, stop_reason="max_tokens")
+
+    @staticmethod
+    def budgets(claude) -> list[int]:
+        return [call.kwargs["max_tokens"] for call in claude.call_args_list]
+
+    def assert_evaluator_error(self, result):
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failure_type, EVALUATOR_ERROR)
+        self.assertIsNone(result.faithfulness)
+        self.assertEqual(result.claims, [])
+
+    def test_truncated_reply_is_retried_with_a_larger_budget(self):
+        result, claude = self.evaluate(self.truncated(), reply())
+
+        self.assertTrue(result.passed)
+        self.assertEqual(self.budgets(claude), [2048, 4096])
+        first_prompt, retry_prompt = (call.args[0] for call in claude.call_args_list)
+        self.assertEqual(retry_prompt, f"{first_prompt}\n\n{TRUNCATION_INSTRUCTION}")
+        self.assertEqual(result.llm_calls, 2)
+
+    def test_truncated_reply_is_never_parsed_even_if_it_looks_valid(self):
+        result, claude = self.evaluate(*[llm_result(reply(), stop_reason="max_tokens")] * 3)
+
+        self.assertEqual(self.budgets(claude), [2048, 4096, MAX_EVALUATOR_TOKENS])
+        self.assert_evaluator_error(result)
+
+    def test_persistent_truncation_stops_at_the_ceiling(self):
+        result, claude = self.evaluate(self.truncated(), self.truncated(), self.truncated())
+
+        self.assertEqual(self.budgets(claude), [2048, 4096, MAX_EVALUATOR_TOKENS])
+        self.assert_evaluator_error(result)
+        self.assertIn("truncated", result.feedback)
+        self.assertEqual(result.llm_calls, 3)
+
+    def test_truncation_at_the_ceiling_is_not_retried_with_the_same_budget(self):
+        result, claude = self.evaluate(self.truncated(), max_tokens=MAX_EVALUATOR_TOKENS)
+
+        self.assertEqual(self.budgets(claude), [MAX_EVALUATOR_TOKENS])
+        self.assert_evaluator_error(result)
+
+    def test_truncation_retries_do_not_use_up_parse_attempts(self):
+        with patch.object(settings, "evaluator_max_parse_attempts", 1):
+            passed, claude = self.evaluate(self.truncated(), reply())
+            failed, failed_claude = self.evaluate(self.truncated(), "not json", reply())
+
+        self.assertTrue(passed.passed)
+        self.assertEqual(claude.call_count, 2)
+        self.assert_evaluator_error(failed)
+        self.assertEqual(self.budgets(failed_claude), [2048, 4096])
+
+    def test_claude_failure_after_truncation_is_evaluator_error(self):
+        result, _ = self.evaluate(self.truncated(), LLMError("overloaded"))
+
+        self.assert_evaluator_error(result)
+        self.assertIn("overloaded", result.feedback)
+
+    def test_json_surrounded_by_prose_is_accepted(self):
+        cases = {
+            "prose": f"Here is the evaluation:\n{reply()}\nLet me know if you need more.",
+            "fenced inside prose": f"Sure.\n```json\n{reply()}\n```\nDone.",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                result, claude = self.evaluate(text)
+                claude.assert_called_once()
+                self.assertTrue(result.passed)
+                self.assertEqual(result.faithfulness, 1.0)
+
+    def test_ambiguous_or_invalid_embedded_json_is_rejected(self):
+        cases = {
+            "two objects": f"First: {reply()}\nSecond: {reply(answer_relevance=0.1)}",
+            "schema violation in prose": f"Result: {reply(answer_relevance=1.5)}",
+            "broken object in prose": "Result: {not json} and nothing else",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                result, claude = self.evaluate(text, text)
+                self.assertEqual(claude.call_count, 2)
+                self.assert_evaluator_error(result)
 
 
 if __name__ == "__main__":

@@ -91,8 +91,43 @@ class KeepFirstAttemptTest(unittest.TestCase):
             with self.subTest(name):
                 self.assert_keeps_first(attempt(2, scores=scores))
 
-    def test_lower_faithfulness_is_rejected_even_with_higher_overall_score(self):
-        self.assert_keeps_first(attempt(2, scores=failing(0.45, 1.0, 1.0)))
+    def test_faithfulness_regression_beyond_the_limit_is_rejected(self):
+        cases = {
+            "more complete, failing": (FIRST, failing(0.44, 1.0, 1.0)),
+            "passing where first fails": (attempt(1, scores=failing(1.0, 0.75, 1.0, MISSING_INFO)),
+                                          evaluation(0.94, 0.9, 0.9)),
+            "much more complete, failing": (
+                attempt(1, scores=failing(1.0, 0.5, 0.3, MISSING_INFO)),
+                failing(0.93, 0.85, 0.65, IRRELEVANT_RETRIEVAL)),
+        }
+        for name, (first, second_scores) in cases.items():
+            with self.subTest(name):
+                self.assert_keeps_first(attempt(2, scores=second_scores), first)
+
+    def test_small_faithfulness_regression_needs_a_meaningful_gain(self):
+        # Only 0.05 more complete: below MIN_COMPLETENESS_GAIN, so lower faithfulness loses.
+        self.assert_keeps_first(attempt(2, scores=failing(0.47, 0.95, 1.0)))
+
+    def test_less_complete_answer_with_higher_context_relevance_is_rejected(self):
+        first = attempt(1, scores=failing(1.0, 0.75, 0.5, MISSING_INFO))
+        cases = {
+            "beyond tolerance": failing(1.0, 0.5, 1.0, MISSING_INFO),
+            "within tolerance, equally faithful": failing(1.0, 0.72, 1.0, MISSING_INFO),
+        }
+        for name, scores in cases.items():
+            with self.subTest(name):
+                self.assert_keeps_first(attempt(2, scores=scores), first)
+
+    def test_failing_attempt_never_replaces_a_passing_one(self):
+        first = attempt(1, scores=evaluation(0.85, 0.85, 0.85))
+        self.assert_keeps_first(attempt(2, scores=failing(1.0, 1.0, 0.79, IRRELEVANT_RETRIEVAL)),
+                                first)
+
+    def test_passing_attempt_with_invalid_scores_never_replaces_first(self):
+        for first in (FIRST, attempt(1, status=ERROR)):
+            with self.subTest(first=first.status):
+                self.assert_keeps_first(attempt(2, scores=evaluation(
+                    float("nan"), 1.0, 1.0, passed=True)), first)
 
     def test_no_overall_improvement_is_rejected(self):
         cases = {
@@ -107,18 +142,6 @@ class KeepFirstAttemptTest(unittest.TestCase):
     def test_passing_second_attempt_with_lower_faithfulness_and_average_is_rejected(self):
         first = attempt(1, scores=failing(1.0, 0.75, 1.0, MISSING_INFO))
         self.assert_keeps_first(attempt(2, scores=evaluation(0.85, 0.85, 0.85)), first)
-
-    def test_passing_second_attempt_without_average_improvement_is_rejected(self):
-        cases = {
-            "equal average": (failing(0.85, 0.79, 0.96, MISSING_INFO),
-                              evaluation(0.9, 0.85, 0.85)),
-            "lower average": (failing(0.8, 0.7, 1.0, MISSING_INFO),
-                              evaluation(0.85, 0.8, 0.8)),
-        }
-        for name, (first_scores, second_scores) in cases.items():
-            with self.subTest(name):
-                self.assert_keeps_first(attempt(2, scores=second_scores),
-                                        attempt(1, scores=first_scores))
 
     def test_unevaluated_first_attempt_is_only_replaced_by_a_pass(self):
         firsts = {
@@ -157,6 +180,33 @@ class SelectSecondAttemptTest(unittest.TestCase):
     def test_float_noise_does_not_count_as_lower_faithfulness(self):
         first = attempt(1, scores=failing(0.1 + 0.2, 0.9, 0.4))
         self.assert_selects_second(attempt(2, scores=failing(0.3, 0.9, 0.6)), first)
+
+    def test_passing_attempt_beats_failing_attempt(self):
+        cases = {
+            # Lower average than the failing first attempt, but it passes and is more faithful.
+            "equal average": (failing(0.85, 0.79, 0.96, MISSING_INFO), evaluation(0.9, 0.85, 0.85)),
+            "lower average": (failing(0.8, 0.7, 1.0, MISSING_INFO), evaluation(0.85, 0.8, 0.8)),
+            # Less complete, slightly less faithful, but passes where the first attempt fails.
+            "small faithfulness loss": (failing(1.0, 1.0, 0.7, IRRELEVANT_RETRIEVAL),
+                                        evaluation(0.96, 0.85, 0.9)),
+        }
+        for name, (first_scores, second_scores) in cases.items():
+            with self.subTest(name):
+                self.assert_selects_second(attempt(2, scores=second_scores),
+                                           attempt(1, scores=first_scores))
+
+    def test_more_complete_answer_with_small_faithfulness_regression(self):
+        first = attempt(1, scores=failing(1.0, 0.5, 0.3, MISSING_INFO))
+        for scores in (failing(0.96, 0.6, 0.4, MISSING_INFO),
+                       failing(0.95, 0.75, 0.2, MISSING_INFO)):
+            with self.subTest(scores=scores):
+                self.assert_selects_second(attempt(2, scores=scores), first)
+
+    def test_slightly_less_complete_but_more_faithful_answer(self):
+        self.assert_selects_second(attempt(2, scores=failing(0.7, 0.87, 0.4)))
+
+    def test_more_complete_answer_with_lower_context_relevance(self):
+        self.assert_selects_second(attempt(2, scores=failing(0.5, 1.0, 0.1)))
 
 
 class SelectFinalAttemptTest(unittest.TestCase):

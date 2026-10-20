@@ -30,9 +30,13 @@ from app.config import settings  # noqa: E402
 from app.db import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Answer, Document, DocumentChunk, Query, RetrievalLog  # noqa: E402
-from app.routers.query import GATE_FAILED_MESSAGE, NOT_SUPPORTED_MESSAGE  # noqa: E402
-from app.services import generator  # noqa: E402
-from app.services.corrector import RETRY_TOP_K, REWRITE, STRICT  # noqa: E402
+from app.routers.query import (  # noqa: E402
+    ERROR_MESSAGE,
+    GATE_FAILED_MESSAGE,
+    NOT_SUPPORTED_MESSAGE,
+)
+from app.services import generator, query_pipeline  # noqa: E402
+from app.services.corrector import FAILURE_DESCRIPTIONS, RETRY_TOP_K, REWRITE, STRICT  # noqa: E402
 from app.services.evaluator import (  # noqa: E402
     EVALUATOR_ERROR,
     IRRELEVANT_RETRIEVAL,
@@ -115,6 +119,8 @@ class ReliRagTest(unittest.TestCase):
         app.dependency_overrides[get_db] = override_get_db
         self.addCleanup(app.dependency_overrides.clear)
         self.client = TestClient(app)
+        # Returns HTTP 500 for unexpected exceptions instead of raising them into the test.
+        self.server_client = TestClient(app, raise_server_exceptions=False)
 
     # --- fixtures -------------------------------------------------------------------------
 
@@ -153,7 +159,7 @@ class ReliRagTest(unittest.TestCase):
     # --- helpers --------------------------------------------------------------------------
 
     def post(self, *, retrievals, generations, evaluations=(), rewrites=(), mode="reli",
-             expected_status=200):
+             expected_status=200, k=None):
         with patch("app.services.similarity_gate.retrieve", side_effect=list(retrievals)) as rt, \
              patch("app.services.generator.call_claude",
                    side_effect=replies(generations)) as gen, \
@@ -163,10 +169,14 @@ class ReliRagTest(unittest.TestCase):
             body = {"question": QUESTION}
             if mode is not None:
                 body["mode"] = mode
-            response = self.client.post("/query", json=body)
+            if k is not None:
+                body["k"] = k
+            client = self.server_client if expected_status == 500 else self.client
+            response = client.post("/query", json=body)
         self.assertEqual(response.status_code, expected_status, response.text)
         mocks = SimpleNamespace(retrieve=rt, generator=gen, evaluator=ev, rewriter=rw)
-        return response.json(), mocks
+        is_json = response.headers.get("content-type", "").startswith("application/json")
+        return (response.json() if is_json else None), mocks
 
     def saved(self, query_id: int):
         with self.Session() as db:
@@ -212,14 +222,16 @@ class ReliRagTest(unittest.TestCase):
         self.assertTrue(body["attempts"][0]["evaluation"]["passed"])
 
     def test_rewrite_correction_selects_passing_second_attempt(self):
+        # Attempt 1's evidence (chunk 0) is kept first, so chunk 2 is passage [2].
+        second_answer = SECOND_ANSWER.replace("[1]", "[2]")
         body, mocks = self.post(
             retrievals=[self.retrieved([0, 1]), self.retrieved([2, 0, 1])],
-            generations=[FIRST_ANSWER, SECOND_ANSWER],
+            generations=[FIRST_ANSWER, second_answer],
             evaluations=[self.irrelevant(), self.passing()],
             rewrites=[REWRITTEN],
         )
 
-        self.assert_final(body, 2, ANSWERED, SECOND_ANSWER, attempts=2)
+        self.assert_final(body, 2, ANSWERED, second_answer, attempts=2)
         mocks.rewriter.assert_called_once()
         self.assertIn("The passages do not state the allowance for item A.",
                       mocks.rewriter.call_args.args[0])
@@ -233,7 +245,7 @@ class ReliRagTest(unittest.TestCase):
                          (None, FIRST_ANSWER, QUESTION))
         self.assertEqual(first["evaluation"]["failure_type"], IRRELEVANT_RETRIEVAL)
         self.assertEqual((second["strategy"], second["answer"], second["retrieval_query"]),
-                         (REWRITE, SECOND_ANSWER, REWRITTEN))
+                         (REWRITE, second_answer, REWRITTEN))
         self.assertTrue(second["evaluation"]["passed"])
         self.assertEqual(len(second["retrieval"]), 3)
 
@@ -283,16 +295,17 @@ class ReliRagTest(unittest.TestCase):
                          [self.chunk_ids[0], self.chunk_ids[2]])
 
     def test_at_most_one_retry_even_if_second_attempt_fails(self):
+        second_answer = SECOND_ANSWER.replace("[1]", "[2]")   # chunk 2 is passage [2]
         body, mocks = self.post(
             retrievals=[self.retrieved([0]), self.retrieved([0, 2])],
-            generations=[FIRST_ANSWER, SECOND_ANSWER],
+            generations=[FIRST_ANSWER, second_answer],
             evaluations=[self.evaluation([self.supported(0)], 0.5, 0.9),   # missing_info, 0.8
                          self.evaluation([self.supported(2)], 0.7, 0.9)],  # missing_info, 0.867
             rewrites=[REWRITTEN],
         )
 
-        # Still failing, but better overall with equal faithfulness: attempt 2 is chosen.
-        self.assert_final(body, 2, ANSWERED, SECOND_ANSWER, attempts=2)
+        # Still failing, but more complete with equal faithfulness: attempt 2 is chosen.
+        self.assert_final(body, 2, ANSWERED, second_answer, attempts=2)
         self.assertEqual(body["attempts"][1]["evaluation"]["failure_type"], MISSING_INFO)
         self.assertEqual((mocks.retrieve.call_count, mocks.generator.call_count,
                           mocks.evaluator.call_count, mocks.rewriter.call_count), (2, 2, 2, 1))
@@ -483,7 +496,115 @@ class ReliRagTest(unittest.TestCase):
                 mocks.rewriter.assert_not_called()
                 self.assertEqual(mocks.generator.call_count, 1)
                 query, _ = self.saved(body["query_id"])
-                self.assertIsNone(query.final_attempt_number)
+                self.assertEqual(query.final_attempt_number, body["final_attempt_number"])
+
+    def test_rewrite_keeps_verified_first_attempt_evidence(self):
+        body, mocks = self.post(
+            retrievals=[self.retrieved([0, 1]), self.retrieved([2, 3])],
+            generations=[FIRST_ANSWER, SECOND_ANSWER],
+            evaluations=[self.evaluation([self.supported(0)], 0.5, 0.9),   # missing_info
+                         self.passing()],
+            rewrites=[REWRITTEN],
+        )
+
+        self.assert_final(body, 2, ANSWERED, SECOND_ANSWER, attempts=2)
+        first, second = body["attempts"]
+        self.assertEqual([r["chunk_id"] for r in first["retrieval"]], self.chunk_ids[0:2])
+        # Chunk 0 backs a supported claim and is kept; chunk 1 backed nothing and is not.
+        logged = [r["chunk_id"] for r in second["retrieval"]]
+        self.assertEqual(sorted(logged), sorted([self.chunk_ids[i] for i in (0, 2, 3)]))
+        self.assertEqual([r["rank"] for r in second["retrieval"]], [1, 2, 3])
+        _, answers = self.saved(body["query_id"])
+        self.assertEqual(self.logged_chunk_ids(answers[1].id), logged)
+        second_prompt = mocks.generator.call_args_list[1].args[0]
+        self.assertIn(CHUNK_TEXTS[0], second_prompt)
+        self.assertNotIn(CHUNK_TEXTS[1], second_prompt)
+        self.assertTrue(second_prompt.endswith(f"Question: {QUESTION}"))
+        self.assertEqual(mocks.generator.call_args_list[1].kwargs["system"],
+                         generator.SYSTEM_PROMPT)
+
+    def test_retry_size_respects_the_requested_k(self):
+        for k, expected in ((3, RETRY_TOP_K), (12, 12)):
+            with self.subTest(k=k):
+                body, mocks = self.post(
+                    retrievals=[self.retrieved([0]), self.retrieved([2])],
+                    generations=[FIRST_ANSWER, SECOND_ANSWER],
+                    evaluations=[self.irrelevant(), self.passing()],
+                    rewrites=[REWRITTEN], k=k,
+                )
+                first_call, second_call = mocks.retrieve.call_args_list
+                self.assertEqual((first_call.kwargs["k"], second_call.kwargs["k"]), (k, expected))
+                query, _ = self.saved(body["query_id"])
+                self.assertEqual(query.options["retry_k"], expected)
+
+    def test_mixed_failure_retrieves_again_and_rejects_unsupported_claims(self):
+        mixed = self.evaluation([self.supported(0), self.unsupported()], 0.5, 0.9)
+        body, mocks = self.post(
+            retrievals=[self.retrieved([0]), self.retrieved([2])],
+            generations=[f"{FIRST_ANSWER} {UNSUPPORTED_TEXT} [1]", SECOND_ANSWER],
+            evaluations=[mixed, self.passing()],
+            rewrites=[REWRITTEN],
+        )
+
+        self.assert_final(body, 2, ANSWERED, SECOND_ANSWER, attempts=2)
+        first, second = body["attempts"]
+        # The stored label is unchanged; the correction still handles the missing information.
+        self.assertEqual(first["evaluation"]["failure_type"], UNSUPPORTED_CLAIM)
+        self.assertEqual(second["strategy"], REWRITE)
+        self.assertEqual(mocks.retrieve.call_count, 2)
+        rewrite_prompt = mocks.rewriter.call_args.args[0]
+        self.assertIn(FAILURE_DESCRIPTIONS[UNSUPPORTED_CLAIM], rewrite_prompt)
+        self.assertIn(FAILURE_DESCRIPTIONS[MISSING_INFO], rewrite_prompt)
+        system = mocks.generator.call_args_list[1].kwargs["system"]
+        self.assertTrue(system.startswith(generator.SYSTEM_PROMPT))
+        self.assertIn(f"- {UNSUPPORTED_TEXT}", system)
+
+    def assert_query_error(self, final_attempt_number, answer_statuses):
+        """The most recent query, as stored and as returned by GET /query/{id}, is ERROR."""
+        with self.Session() as db:
+            query = db.scalars(select(Query).order_by(Query.id.desc()).limit(1)).one()
+            answers = db.scalars(select(Answer).where(Answer.query_id == query.id)).all()
+            self.assertEqual((query.final_status, query.final_attempt_number),
+                             (ERROR, final_attempt_number))
+            self.assertEqual([a.status for a in answers], answer_statuses)
+            query_id = query.id
+        fetched = self.client.get(f"/query/{query_id}").json()
+        self.assertEqual((fetched["status"], fetched["final_answer"]), (ERROR, ERROR_MESSAGE))
+
+    def test_retrieval_failure_marks_query_error(self):
+        for mode in ("basic", "reli"):
+            with self.subTest(mode=mode):
+                _, mocks = self.post(retrievals=[RuntimeError("embedding service down")],
+                                     generations=[], mode=mode, expected_status=500)
+                mocks.generator.assert_not_called()
+                self.assert_query_error(None, [])
+
+    def test_unexpected_first_attempt_error_marks_query_error(self):
+        for mode in ("basic", "reli"):
+            with self.subTest(mode=mode):
+                _, mocks = self.post(retrievals=[self.retrieved([0])],
+                                     generations=[TypeError("Could not resolve authentication")],
+                                     mode=mode, expected_status=500)
+                mocks.evaluator.assert_not_called()
+                self.assert_query_error(1, [ERROR])
+
+    def test_error_is_saved_in_a_fresh_session_when_the_current_one_fails(self):
+        real_mark_error = query_pipeline._mark_error
+        sessions = []
+
+        def mark_error(db, query_id):
+            sessions.append(db)
+            if len(sessions) == 1:
+                raise RuntimeError("session unusable")
+            real_mark_error(db, query_id)
+
+        with patch("app.services.query_pipeline._mark_error", side_effect=mark_error):
+            self.post(retrievals=[RuntimeError("embedding service down")], generations=[],
+                      expected_status=500)
+
+        self.assertEqual(len(sessions), 2)
+        self.assertIsNot(sessions[0], sessions[1])
+        self.assert_query_error(None, [])
 
     def test_unknown_mode_is_rejected(self):
         response = self.client.post("/query", json={"question": QUESTION, "mode": "other"})

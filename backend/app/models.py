@@ -14,11 +14,13 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db import Base
 
 EMBEDDING_DIM = 384
+# Deterministic evaluator checks that can change a claim's verdict (Claim.check_name).
+CLAIM_CHECK_NAMES = ("evidence", "support", "citation", "uncited", "limitation")
 
 
 class Document(Base):
@@ -31,6 +33,9 @@ class Document(Base):
     )
     total_pages: Mapped[int | None] = mapped_column(Integer)
     total_chunks: Mapped[int | None] = mapped_column(Integer)
+    # Set instead of deleting a document that past answer attempts retrieved from: it is hidden
+    # from listings and retrieval, but its chunks stay so that history remains intact.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan", passive_deletes=True
@@ -183,6 +188,18 @@ class Claim(Base):
         ForeignKey("document_chunks.id", ondelete="SET NULL"), index=True
     )
     evidence_quote: Mapped[str | None] = mapped_column(Text)
+    # Verification details; NULL for claims saved before they were recorded. `claude_verdict`
+    # is Claude's verdict before the deterministic checks (NULL for a claim a check added),
+    # `evidence_error` why a check changed the claim, and `check_name` which check did.
+    claude_verdict: Mapped[str | None] = mapped_column(String(32))
+    evidence_error: Mapped[str | None] = mapped_column(Text)
+    check_name: Mapped[str | None] = mapped_column(String(16))
 
     evaluation: Mapped[Evaluation] = relationship(back_populates="claims")
     evidence_chunk: Mapped[DocumentChunk | None] = relationship()
+
+    @validates("check_name")
+    def _validate_check_name(self, _key: str, value: str | None) -> str | None:
+        if value is not None and value not in CLAIM_CHECK_NAMES:
+            raise ValueError(f"check_name must be one of {CLAIM_CHECK_NAMES} or None, not {value!r}")
+        return value

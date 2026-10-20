@@ -1,7 +1,7 @@
 import logging
 import math
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -10,10 +10,12 @@ from app.services.evaluator import (
     IRRELEVANT_RETRIEVAL,
     MISSING_INFO,
     PARTIALLY_SUPPORTED,
+    SUPPORTED,
     UNSUPPORTED,
     UNSUPPORTED_CLAIM,
 )
 from app.services.llm import LLMResult, call_claude
+from app.services.retrieval import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
@@ -69,29 +71,66 @@ class RewriteResult:
     llm: LLMResult | None
 
 
+def retry_top_k(k: int) -> int:
+    """Chunks a REWRITE retry retrieves: RETRY_TOP_K, but never fewer than the requested `k`."""
+    return max(k, RETRY_TOP_K)
+
+
+def _below(score: float | None, threshold: float) -> bool:
+    return score is not None and math.isfinite(score) and score < threshold
+
+
+def failure_signals(
+    evaluation: EvaluationLike | None, *, threshold: float | None = None
+) -> list[str]:
+    """Every problem a failed evaluation shows, starting with its stored `failure_type`.
+
+    The stored label names only the first failing score; this adds the failure type of each
+    other score below `threshold` (faithfulness, answer relevance, context relevance), so a
+    correction can address all of them. Scores the evaluation does not carry are skipped.
+    Passing evaluations, `evaluator_error`, unknown labels, and missing evaluations have none.
+    `threshold=None` uses EVALUATOR_PASS_THRESHOLD.
+    """
+    if evaluation is None or evaluation.passed:
+        return []
+    if evaluation.failure_type not in FAILURE_DESCRIPTIONS:
+        return []
+    if threshold is None:
+        threshold = settings.evaluator_pass_threshold
+    signals = [evaluation.failure_type]
+    for score, failure_type in (
+        (getattr(evaluation, "faithfulness", None), UNSUPPORTED_CLAIM),
+        (getattr(evaluation, "answer_relevance", None), MISSING_INFO),
+        (evaluation.context_relevance, IRRELEVANT_RETRIEVAL),
+    ):
+        if failure_type not in signals and _below(score, threshold):
+            signals.append(failure_type)
+    return signals
+
+
 def choose_correction(
     evaluation: EvaluationLike | None, *, threshold: float | None = None
 ) -> str | None:
     """REWRITE, STRICT, or None (no correction) for a failed evaluation.
 
-    `missing_info` and `irrelevant_retrieval` are retrieval problems: REWRITE.
-    `unsupported_claim` is a generation problem when the retrieved context was adequate
-    (context relevance at least `threshold`): STRICT regeneration on the same chunks;
-    otherwise the retrieval is at fault too, so REWRITE. Passing evaluations,
-    `evaluator_error`, and missing evaluations get no correction.
-    `threshold=None` uses EVALUATOR_PASS_THRESHOLD.
+    Uses every failure signal (see `failure_signals`), not just the stored label.
+    Only an unsupported-claim problem with adequate context (context relevance known and at
+    least `threshold`) and no other failing score is a pure generation problem: STRICT
+    regeneration on the same chunks. Any missing information or weak retrieval needs new
+    evidence: REWRITE (which also rejects unsupported claims when there are any, see
+    `claims_to_reject`). Passing evaluations, `evaluator_error`, and missing evaluations get
+    no correction. `threshold=None` uses EVALUATOR_PASS_THRESHOLD.
     """
-    if evaluation is None or evaluation.passed:
+    if threshold is None:
+        threshold = settings.evaluator_pass_threshold
+    signals = failure_signals(evaluation, threshold=threshold)
+    if not signals:
         return None
-    if evaluation.failure_type in (MISSING_INFO, IRRELEVANT_RETRIEVAL):
-        return REWRITE
-    if evaluation.failure_type == UNSUPPORTED_CLAIM:
-        if threshold is None:
-            threshold = settings.evaluator_pass_threshold
+    if signals == [UNSUPPORTED_CLAIM]:
         context = evaluation.context_relevance
         adequate = context is not None and math.isfinite(context) and context >= threshold
         return STRICT if adequate else REWRITE
-    return None
+    return REWRITE
 
 
 def rejected_claim_texts(claims: Iterable[ClaimLike]) -> list[str]:
@@ -100,8 +139,40 @@ def rejected_claim_texts(claims: Iterable[ClaimLike]) -> list[str]:
             if claim.verdict in (UNSUPPORTED, PARTIALLY_SUPPORTED)]
 
 
-def build_rewrite_prompt(question: str, feedback: str | None, failure_type: str | None) -> str:
-    problem = FAILURE_DESCRIPTIONS.get(failure_type, DEFAULT_FAILURE_DESCRIPTION)
+def claims_to_reject(evaluation: EvaluationLike | None, *,
+                     threshold: float | None = None) -> list[str]:
+    """Claims a correction must avoid: the rejected claims when unsupported claims are a
+    failure signal, else none (so a pure retrieval failure keeps its normal generation)."""
+    if UNSUPPORTED_CLAIM not in failure_signals(evaluation, threshold=threshold):
+        return []
+    return rejected_claim_texts(getattr(evaluation, "claims", ()))
+
+
+def supporting_chunks(
+    chunks: Sequence[RetrievedChunk], claims: Iterable[ClaimLike]
+) -> list[RetrievedChunk]:
+    """The `chunks` that verified evidence points to, in their original order.
+
+    A chunk counts when it is the evidence of a supported or partially supported claim; the
+    evaluator only keeps evidence whose quote was found in that chunk.
+    """
+    evidence = {getattr(claim, "evidence_chunk_id", None) for claim in claims
+                if claim.verdict in (SUPPORTED, PARTIALLY_SUPPORTED)}
+    return [chunk for chunk in chunks if chunk.chunk_id in evidence]
+
+
+def describe_failures(failure_types: str | Sequence[str] | None) -> str:
+    """Problem descriptions for the rewrite prompt, one per known failure type."""
+    if failure_types is None or isinstance(failure_types, str):
+        failure_types = [failure_types]
+    descriptions = [FAILURE_DESCRIPTIONS[ft] for ft in failure_types if ft in FAILURE_DESCRIPTIONS]
+    return " ".join(dict.fromkeys(descriptions)) or DEFAULT_FAILURE_DESCRIPTION
+
+
+def build_rewrite_prompt(
+    question: str, feedback: str | None, failure_type: str | Sequence[str] | None
+) -> str:
+    problem = describe_failures(failure_type)
     feedback = (feedback or "").strip() or "None given."
     return (f"<question>\n{question}\n</question>\n\n"
             f"<problem>\n{problem}\n</problem>\n\n"
@@ -136,10 +207,12 @@ def rewrite_query(
     question: str,
     feedback: str | None,
     *,
-    failure_type: str | None = None,
+    failure_type: str | Sequence[str] | None = None,
     max_tokens: int | None = None,
 ) -> RewriteResult:
     """Rewrite `question` into a better retrieval query using the evaluator's feedback.
+
+    `failure_type` is one failure type or several (see `failure_signals`).
 
     Never raises for Claude problems: if the call fails or the reply is empty, multi-line,
     longer than MAX_REWRITE_CHARS, or unchanged, the original question is returned with

@@ -1,13 +1,14 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pymupdf
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import Document
+from app.models import Claim, Document, DocumentChunk, RetrievalLog
 from app.schemas import DocumentDeleteResponse, DocumentRead
 from app.services.ingestion import ingest_document
 
@@ -74,22 +75,52 @@ def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db))
 
 @router.get("", response_model=list[DocumentRead])
 def list_documents(db: Session = Depends(get_db)):
-    return db.scalars(select(Document).order_by(Document.uploaded_at.desc())).all()
+    return db.scalars(
+        select(Document).where(Document.deleted_at.is_(None)).order_by(Document.uploaded_at.desc())
+    ).all()
+
+
+def _history_attempts(db: Session, document_id: int) -> tuple[int, bool]:
+    """(answer attempts that retrieved the document's chunks, whether any claim cites one)."""
+    attempts = db.scalar(
+        select(func.count(func.distinct(RetrievalLog.answer_id)))
+        .join(DocumentChunk, DocumentChunk.id == RetrievalLog.chunk_id)
+        .where(DocumentChunk.document_id == document_id)
+    ) or 0
+    cited = db.scalar(select(exists().where(
+        Claim.evidence_chunk_id == DocumentChunk.id, DocumentChunk.document_id == document_id)))
+    return attempts, bool(cited)
 
 
 @router.delete("/{document_id}", response_model=DocumentDeleteResponse)
 def delete_document(document_id: int, db: Session = Depends(get_db)):
+    """Delete a document; one that past answer attempts used is soft-deleted instead.
+
+    A soft-deleted document is hidden from listings and retrieval, but its row and chunks are
+    kept, so the retrieval logs, claims, and citations of past attempts stay intact (deleting
+    the chunks would cascade to those rows). A document no attempt used is deleted outright.
+    Deleting a missing or already deleted document returns 404.
+    """
     document = db.get(Document, document_id)
-    if document is None:
+    if document is None or document.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Document {document_id} not found.")
 
     filename, chunk_count = document.filename, document.total_chunks or 0
-    db.delete(document)
+    # Hide it first, so no new attempt can retrieve it while history is checked.
+    document.deleted_at = datetime.now(UTC)
     db.commit()
 
+    attempts, cited = _history_attempts(db, document_id)
+    if attempts or cited:
+        message = (f"Deleted document '{filename}'. Its {chunk_count} chunks are kept, hidden "
+                   f"from search, for the history of {attempts} past answer attempt(s).")
+    else:
+        db.delete(document)
+        db.commit()
+        message = f"Deleted document '{filename}' and {chunk_count} chunks."
     return DocumentDeleteResponse(
         id=document_id,
         filename=filename,
         deleted=True,
-        message=f"Deleted document '{filename}' and {chunk_count} chunks.",
+        message=message,
     )

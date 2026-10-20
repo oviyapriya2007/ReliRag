@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
-from app.models import Answer, DocumentChunk, Evaluation, Query, RetrievalLog
+from app.models import Answer, Claim, DocumentChunk, Evaluation, Query, RetrievalLog
 from app.schemas import (
     AttemptTimings,
     ClaimRead,
@@ -48,6 +48,20 @@ def _load_query(db: Session, query_id: int) -> Query | None:
     return db.scalars(stmt).first()
 
 
+def claim_read(claim: Claim) -> ClaimRead:
+    """API view of a stored claim; verification details stay null for claims saved before
+    they were recorded."""
+    return ClaimRead(
+        claim_text=claim.claim_text,
+        verdict=claim.verdict,
+        evidence_chunk_id=claim.evidence_chunk_id,
+        evidence_quote=claim.evidence_quote,
+        claude_verdict=claim.claude_verdict,
+        evidence_error=claim.evidence_error,
+        check_name=claim.check_name,
+    )
+
+
 def _to_evaluation(evaluation: Evaluation) -> EvaluationRead:
     return EvaluationRead(
         faithfulness=evaluation.faithfulness,
@@ -57,12 +71,7 @@ def _to_evaluation(evaluation: Evaluation) -> EvaluationRead:
         failure_type=evaluation.failure_type,
         feedback=evaluation.feedback,
         claims=[
-            ClaimRead(
-                claim_text=claim.claim_text,
-                verdict=claim.verdict,
-                evidence_chunk_id=claim.evidence_chunk_id,
-                evidence_quote=claim.evidence_quote,
-            )
+            claim_read(claim)
             for claim in evaluation.claims
         ],
     )
@@ -82,7 +91,11 @@ def _to_attempt(answer: Answer) -> QueryAttempt:
         )
         for log in answer.retrieval_logs
     ]
-    citations = parse_citations(answer.answer_text, len(retrieval)) if answer.answer_text else []
+    # Citation [n] refers to the passage logged at rank n. Ranks stay fixed if a deleted
+    # document removes some logged passages, so citations of the remaining ones still match.
+    ranks = {result.rank for result in retrieval}
+    citations = [number for number in parse_citations(answer.answer_text, max(ranks, default=0))
+                 if number in ranks] if answer.answer_text else []
     # Evaluations are ordered by id, so the last one is the latest.
     evaluation = answer.evaluations[-1] if answer.evaluations else None
     return QueryAttempt(

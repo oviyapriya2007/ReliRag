@@ -173,18 +173,35 @@ class EvidenceVerificationTest(unittest.TestCase):
         self.assertEqual([c.verdict for c in inflated.claims], [SUPPORTED, UNSUPPORTED])
 
 
-class KnownLimitationTest(unittest.TestCase):
-    """Quote verification proves presence, not entailment.
+class SupportCheckTest(unittest.TestCase):
+    """A genuine quote that does not state the claim no longer counts as support."""
 
-    The evaluator only checks that an evidence quote occurs in the cited retrieved chunk.
-    If Claude marks a false claim as supported and cites a genuine but irrelevant quote,
-    the claim stays supported. The sanity runner reports this as a semantic-support
-    failure for negative cases instead of treating quote presence as proof.
+    def test_genuine_but_irrelevant_quote_is_unsupported(self):
+        result, _ = evaluate(reply([
+            claim("UDP guarantees delivery.", SUPPORTED, 97, "UDP sends independent datagrams"),
+        ]))
+
+        self.assertEqual(result.claims[0].verdict, UNSUPPORTED)
+        self.assertEqual(result.claims[0].claude_verdict, SUPPORTED)
+        self.assertIn("does not support the claim", result.claims[0].evidence_error)
+        self.assertEqual(result.faithfulness, 0.0)
+        self.assertFalse(result.passed)
+        self.assertEqual(failed(sanity.check_negative_case(UDP_CASE, result)), [])
+
+
+class KnownLimitationTest(unittest.TestCase):
+    """Support checks are lexical, so they cannot prove entailment.
+
+    The evaluator checks that an evidence quote occurs in the cited chunk and shares the
+    claim's numbers, negations, and most of its content words. A false claim that reuses the
+    quote's words with a different subject still passes those checks. The sanity runner
+    reports this as a semantic-support failure for negative cases.
     """
 
     def udp_supported_with_genuine_quote(self):
         return evaluate(reply([
-            claim("UDP guarantees delivery.", SUPPORTED, 97, "UDP sends independent datagrams"),
+            claim("UDP guarantees a reliable, ordered byte stream.", SUPPORTED, 97,
+                  "provides a reliable, ordered byte stream"),
         ]))[0]
 
     def test_genuine_quote_passes_presence_check_without_entailment(self):
@@ -420,8 +437,9 @@ class SanityRunnerTest(unittest.TestCase):
     def test_negatives_separate_semantic_failures_from_evaluator_errors(self):
         def fake_claude(prompt, **kwargs):
             if "<answer>\nUDP guarantees delivery [1].\n</answer>" in prompt:
-                return llm_result(reply([claim("UDP guarantees delivery.", SUPPORTED, 97,
-                                               "UDP sends independent datagrams")]))
+                return llm_result(reply([claim("UDP guarantees a reliable, ordered byte stream.",
+                                               SUPPORTED, 97,
+                                               "provides a reliable, ordered byte stream")]))
             if "chunk_id=128" in prompt:
                 return llm_result("not json")
             return llm_result(reply([claim("Some claim.", UNSUPPORTED, None, None)]))

@@ -46,8 +46,12 @@ from app.services.corrector import (  # noqa: E402
     REWRITE_SYSTEM_PROMPT,
     STRICT,
     choose_correction,
+    claims_to_reject,
+    failure_signals,
     rejected_claim_texts,
+    retry_top_k,
     rewrite_query,
+    supporting_chunks,
 )
 from app.services.evaluator import (  # noqa: E402
     EVALUATOR_ERROR,
@@ -72,7 +76,12 @@ from app.services.query_pipeline import (  # noqa: E402
     run_rewrite_attempt,
     run_strict_attempt,
 )
-from app.services.retrieval import RetrievedChunk, load_logged_chunks  # noqa: E402
+from app.services.retrieval import (  # noqa: E402
+    MAX_TOP_K,
+    RetrievedChunk,
+    load_logged_chunks,
+    merge_ranked_chunks,
+)
 from app.services.similarity_gate import INSUFFICIENT_EVIDENCE  # noqa: E402
 
 MODEL = "claude-test-model"
@@ -155,6 +164,107 @@ class ChooseCorrectionTest(PinnedSettingsTestCase):
         self.assertEqual(rejected_claim_texts(claims), ["b", "c"])
 
 
+CLAIMS = [SimpleNamespace(claim_text="a", verdict=SUPPORTED, evidence_chunk_id=2),
+          SimpleNamespace(claim_text="b", verdict=UNSUPPORTED, evidence_chunk_id=None),
+          SimpleNamespace(claim_text="c", verdict=PARTIALLY_SUPPORTED, evidence_chunk_id=3)]
+
+
+def scored(failure_type, faithfulness, answer_relevance, context_relevance, claims=CLAIMS):
+    return SimpleNamespace(passed=False, failure_type=failure_type, faithfulness=faithfulness,
+                           answer_relevance=answer_relevance, context_relevance=context_relevance,
+                           claims=claims)
+
+
+class FailureSignalsTest(PinnedSettingsTestCase):
+    def test_mixed_unsupported_and_missing_info_is_rewritten_and_rejects_claims(self):
+        mixed = scored(UNSUPPORTED_CLAIM, 0.5, 0.5, 0.9)
+
+        self.assertEqual(failure_signals(mixed), [UNSUPPORTED_CLAIM, MISSING_INFO])
+        self.assertEqual(choose_correction(mixed), REWRITE)
+        self.assertEqual(claims_to_reject(mixed), ["b", "c"])
+
+    def test_pure_unsupported_claim_stays_strict(self):
+        pure = scored(UNSUPPORTED_CLAIM, 0.5, 0.9, 0.9)
+
+        self.assertEqual(failure_signals(pure), [UNSUPPORTED_CLAIM])
+        self.assertEqual(choose_correction(pure), STRICT)
+        self.assertEqual(claims_to_reject(pure), ["b", "c"])
+
+    def test_every_failing_score_is_a_signal_after_the_stored_label(self):
+        self.assertEqual(failure_signals(scored(UNSUPPORTED_CLAIM, 0.5, 0.5, 0.5)),
+                         [UNSUPPORTED_CLAIM, MISSING_INFO, IRRELEVANT_RETRIEVAL])
+        self.assertEqual(failure_signals(scored(MISSING_INFO, 0.9, 0.5, 0.5)),
+                         [MISSING_INFO, IRRELEVANT_RETRIEVAL])
+        self.assertEqual(failure_signals(scored(IRRELEVANT_RETRIEVAL, 0.9, 0.9, 0.5)),
+                         [IRRELEVANT_RETRIEVAL])
+
+    def test_retrieval_failures_do_not_reject_claims(self):
+        for evaluation in (scored(MISSING_INFO, 0.9, 0.5, 0.9),
+                           scored(IRRELEVANT_RETRIEVAL, 0.85, 0.9, 0.4)):
+            with self.subTest(failure_type=evaluation.failure_type):
+                self.assertEqual(choose_correction(evaluation), REWRITE)
+                self.assertEqual(claims_to_reject(evaluation), [])
+
+    def test_threshold_applies_to_every_signal(self):
+        evaluation = scored(UNSUPPORTED_CLAIM, 0.5, 0.85, 0.9)
+        self.assertEqual(choose_correction(evaluation), STRICT)
+        self.assertEqual(choose_correction(evaluation, threshold=0.88), REWRITE)
+        self.assertEqual(failure_signals(evaluation, threshold=0.88),
+                         [UNSUPPORTED_CLAIM, MISSING_INFO])
+
+    def test_no_signals_without_a_correctable_failure(self):
+        passing = scored(None, 1.0, 1.0, 1.0)
+        passing.passed = True
+        for evaluation in (None, passing, scored(EVALUATOR_ERROR, None, None, None),
+                           scored("something_else", 0.1, 0.1, 0.1)):
+            with self.subTest(evaluation=evaluation):
+                self.assertEqual(failure_signals(evaluation), [])
+                self.assertEqual(claims_to_reject(evaluation), [])
+
+    def test_retry_size_never_drops_below_the_requested_k(self):
+        self.assertEqual([retry_top_k(k) for k in (1, 5, RETRY_TOP_K, 12, MAX_TOP_K)],
+                         [RETRY_TOP_K, RETRY_TOP_K, RETRY_TOP_K, 12, MAX_TOP_K])
+
+    def test_supporting_chunks_are_verified_evidence_in_rank_order(self):
+        chunks = [RetrievedChunk(chunk_id=i, document_id=1, document="doc.pdf", page=i,
+                                 text=f"text {i}", similarity=0.9 - 0.1 * i) for i in (3, 1, 2)]
+        self.assertEqual([c.chunk_id for c in supporting_chunks(chunks, CLAIMS)], [3, 2])
+        self.assertEqual(supporting_chunks(chunks, []), [])
+
+
+def chunk(chunk_id: int, similarity: float) -> RetrievedChunk:
+    return RetrievedChunk(chunk_id=chunk_id, document_id=1, document="doc.pdf", page=chunk_id,
+                          text=f"text {chunk_id}", similarity=similarity)
+
+
+class MergeRankedChunksTest(unittest.TestCase):
+    def test_duplicates_are_removed_and_shared_chunks_rank_first(self):
+        primary = [chunk(10, 0.9), chunk(11, 0.8), chunk(12, 0.7)]
+        secondary = [chunk(12, 0.4), chunk(20, 0.3)]
+
+        merged = merge_ranked_chunks(primary, secondary)
+
+        # 12 is in both rankings; 11 (primary rank 2) and 20 (secondary rank 2) tie, primary first.
+        self.assertEqual([c.chunk_id for c in merged], [12, 10, 11, 20])
+        self.assertEqual(len({c.chunk_id for c in merged}), len(merged))
+
+    def test_shared_chunk_keeps_its_primary_entry(self):
+        merged = merge_ranked_chunks([chunk(1, 0.81)], [chunk(1, 0.33)])
+        self.assertEqual(merged, [chunk(1, 0.81)])
+
+    def test_ranks_not_similarities_decide_the_order(self):
+        # The secondary ranking's scores come from a different query and are much higher.
+        merged = merge_ranked_chunks([chunk(1, 0.31), chunk(2, 0.30)], [chunk(3, 0.99)])
+        self.assertEqual([c.chunk_id for c in merged], [1, 3, 2])
+
+    def test_empty_inputs_and_limit(self):
+        self.assertEqual(merge_ranked_chunks([], []), [])
+        self.assertEqual(merge_ranked_chunks([chunk(1, 0.9)], []), [chunk(1, 0.9)])
+        many = [chunk(i, 0.5) for i in range(MAX_TOP_K + 10)]
+        self.assertEqual(len(merge_ranked_chunks(many, [])), MAX_TOP_K)
+        self.assertEqual(len(merge_ranked_chunks(many[:3], many[3:6], limit=4)), 4)
+
+
 class RewriteQueryTest(PinnedSettingsTestCase):
     def rewrite(self, reply=None, *, error=None, feedback=FEEDBACK, failure_type=MISSING_INFO,
                 question=QUESTION):
@@ -185,6 +295,12 @@ class RewriteQueryTest(PinnedSettingsTestCase):
         prompt = claude.call_args.args[0]
         self.assertIn(FAILURE_DESCRIPTIONS[IRRELEVANT_RETRIEVAL], prompt)
         self.assertIn("None given.", prompt)
+
+    def test_prompt_describes_every_failure_signal(self):
+        _, claude = self.rewrite(REWRITTEN, failure_type=[UNSUPPORTED_CLAIM, MISSING_INFO])
+        prompt = claude.call_args.args[0]
+        self.assertIn(FAILURE_DESCRIPTIONS[UNSUPPORTED_CLAIM], prompt)
+        self.assertIn(FAILURE_DESCRIPTIONS[MISSING_INFO], prompt)
 
     def test_reply_is_cleaned(self):
         cases = {
@@ -463,11 +579,12 @@ class AttemptCorrectionTest(PinnedSettingsTestCase):
         self.assert_first_attempt_unchanged()
 
     def run_rewrite(self, rewriter, similarity=0.8, generator_reply="Item A is available [1].",
-                    attempt_number=2):
+                    attempt_number=2, retrieved=None, **kwargs):
         """Run attempt 2 via rewrite with mocked rewriter, retrieval, and generator Claude."""
-        retrieved = [RetrievedChunk(chunk_id=self.chunk_ids[0], document_id=1,
-                                    document="handbook.pdf", page=1, text=CHUNK_TEXTS[0],
-                                    similarity=similarity)]
+        if retrieved is None:
+            retrieved = [RetrievedChunk(chunk_id=self.chunk_ids[0], document_id=1,
+                                        document="handbook.pdf", page=1, text=CHUNK_TEXTS[0],
+                                        similarity=similarity)]
         with self.Session() as db, \
              patch("app.services.corrector.call_claude") as rewrite_claude, \
              patch("app.services.similarity_gate.retrieve", return_value=retrieved) as retrieve, \
@@ -479,8 +596,17 @@ class AttemptCorrectionTest(PinnedSettingsTestCase):
                 rewrite_claude.return_value = llm_result(rewriter)
             query = db.get(Query, self.query_id)
             attempt = run_rewrite_attempt(db, query, attempt_number=attempt_number,
-                                          feedback=FEEDBACK, failure_type=IRRELEVANT_RETRIEVAL)
+                                          feedback=FEEDBACK, failure_type=IRRELEVANT_RETRIEVAL,
+                                          **kwargs)
         return attempt, retrieve, claude
+
+    def first_attempt_evidence(self) -> tuple[list[RetrievedChunk], list[str]]:
+        """Attempt 1's verified evidence chunks and rejected claim texts."""
+        with self.Session() as db:
+            first = db.get(Answer, self.first_id)
+            claims = first.evaluations[-1].claims
+            return (supporting_chunks(load_logged_chunks(db, self.first_id), claims),
+                    rejected_claim_texts(claims))
 
     def test_rewrite_attempt_retrieves_with_rewritten_query_and_larger_k(self):
         attempt, retrieve, claude = self.run_rewrite(REWRITTEN)
@@ -491,11 +617,55 @@ class AttemptCorrectionTest(PinnedSettingsTestCase):
         self.assertEqual(RETRY_TOP_K, 8)
         self.assertTrue(attempt.rewrite.rewritten)
         self.assertTrue(claude.call_args.args[0].endswith(f"Question: {QUESTION}"))
+        self.assertEqual(claude.call_args.kwargs["system"], generator.SYSTEM_PROMPT)
 
         first, second = self.answers()
         self.assertEqual((second.attempt_number, second.retrieval_query, second.status),
                          (2, REWRITTEN, ANSWERED))
         self.assertEqual(self.logs(second.id), [(self.chunk_ids[0], 1, 0.8)])
+        self.assert_first_attempt_unchanged()
+
+    def test_rewrite_attempt_merges_carried_evidence_and_rejects_claims(self):
+        carried, rejected = self.first_attempt_evidence()
+        self.assertEqual([c.chunk_id for c in carried], [self.chunk_ids[0]])
+        retrieved = [
+            RetrievedChunk(chunk_id=self.chunk_ids[1], document_id=1, document="handbook.pdf",
+                           page=2, text=CHUNK_TEXTS[1], similarity=0.8),
+            RetrievedChunk(chunk_id=self.chunk_ids[0], document_id=1, document="handbook.pdf",
+                           page=1, text=CHUNK_TEXTS[0], similarity=0.7),
+        ]
+
+        attempt, retrieve, claude = self.run_rewrite(
+            REWRITTEN, retrieved=retrieved, k=12, carry_over=carried, rejected_claims=rejected)
+
+        self.assertEqual(retrieve.call_args.kwargs["k"], 12)
+        # Chunk 0 is in both rankings, so it ranks first and keeps its new-retrieval entry.
+        expected_logs = [(self.chunk_ids[0], 1, 0.7), (self.chunk_ids[1], 2, 0.8)]
+        first, second = self.answers()
+        self.assertEqual(self.logs(second.id), expected_logs)
+        self.assertEqual([(c.chunk_id, c.similarity) for c in attempt.chunks],
+                         [(chunk_id, similarity) for chunk_id, _, similarity in expected_logs])
+        self.assertEqual(claude.call_args.args[0], generator.build_prompt(QUESTION, attempt.chunks))
+        system = claude.call_args.kwargs["system"]
+        self.assertTrue(system.startswith(generator.SYSTEM_PROMPT))
+        self.assertIn("- Item A has an allowance of 100 units.", system)
+        self.assertEqual((second.strategy, second.retrieval_query, second.status),
+                         (REWRITE, REWRITTEN, ANSWERED))
+        self.assert_first_attempt_unchanged()
+
+    def test_carried_evidence_cannot_open_the_gate(self):
+        carried, rejected = self.first_attempt_evidence()
+        retrieved = [RetrievedChunk(chunk_id=self.chunk_ids[1], document_id=1,
+                                    document="handbook.pdf", page=2, text=CHUNK_TEXTS[1],
+                                    similarity=0.05)]
+
+        _, _, claude = self.run_rewrite(REWRITTEN, retrieved=retrieved, carry_over=carried,
+                                        rejected_claims=rejected)
+
+        claude.assert_not_called()
+        first, second = self.answers()
+        self.assertEqual((second.status, second.answer_text), (INSUFFICIENT_EVIDENCE, None))
+        self.assertEqual(self.logs(second.id), [(self.chunk_ids[1], 1, 0.05)])
         self.assert_first_attempt_unchanged()
 
     def test_rejected_rewrite_retrieves_original_question(self):
