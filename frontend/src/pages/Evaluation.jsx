@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getQuery, USE_MOCK } from "../../api/client";
 import { thresholdCheck, thresholdPercent } from "../evaluationThreshold.js";
+import { comparisonScores, SINGLE_MODE_MESSAGE } from "../comparisonScores.js";
 
 const C = {
   purple: "#554188",
@@ -549,25 +550,7 @@ function CorrectionReason({ attempts, finalAttempt, selectionReason }) {
 }
 
 function BasicVsReliComparison({ query }) {
-  const comparison =
-    query?.comparison ??
-    query?.comparison_results ??
-    query?.comparison_data ??
-    null;
-
-  function readScore(metric, system) {
-    return normalizedScore(
-      comparison?.[metric]?.[system] ??
-      comparison?.[system]?.[metric] ??
-      null
-    );
-  }
-
-  const metrics = [
-    ["Faithfulness", "faithfulness"],
-    ["Answer relevance", "answer_relevance"],
-    ["Context relevance", "context_relevance"],
-  ];
+  const { available, metrics } = comparisonScores(query);
 
   return (
     <section className="p-5 sm:p-6" style={panel}>
@@ -578,47 +561,65 @@ function BasicVsReliComparison({ query }) {
         icon="⇆"
       />
 
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-        {metrics.map(([title, key]) => {
-          const basic = readScore(key, "basic_rag");
-          const reli = readScore(key, "reli_rag");
-          const difference =
-            basic === null || reli === null ? null : reli - basic;
+      {available ? (
+        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+          {metrics.map(({ title, key, basic: basicValue, reli: reliValue }) => {
+            const basic = normalizedScore(basicValue);
+            const reli = normalizedScore(reliValue);
+            const difference =
+              basic === null || reli === null ? null : reli - basic;
 
-          return (
-            <article
-              key={key}
-              className="rounded-2xl border p-4"
-              style={{ borderColor: C.border }}
-            >
-              <h3 className="text-sm font-bold" style={{ color: C.ink }}>
-                {title}
-              </h3>
+            return (
+              <article
+                key={key}
+                className="rounded-2xl border p-4"
+                style={{ borderColor: C.border }}
+              >
+                <h3 className="text-sm font-bold" style={{ color: C.ink }}>
+                  {title}
+                </h3>
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="rounded-xl p-3" style={{ background: C.blueLight }}>
-                  <p className="text-xs" style={{ color: C.blue }}>Basic RAG</p>
-                  <p className="mt-1 text-lg font-bold" style={{ color: C.ink }}>
-                    {basic === null ? "N/A" : `${basic.toFixed(1)}%`}
-                  </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl p-3" style={{ background: C.blueLight }}>
+                    <p className="text-xs" style={{ color: C.blue }}>Basic RAG</p>
+                    <p className="mt-1 text-lg font-bold" style={{ color: C.ink }}>
+                      {basic === null ? "N/A" : `${basic.toFixed(1)}%`}
+                    </p>
+                  </div>
+                  <div className="rounded-xl p-3" style={{ background: C.purpleLight }}>
+                    <p className="text-xs" style={{ color: C.purple }}>Attest</p>
+                    <p className="mt-1 text-lg font-bold" style={{ color: C.purple }}>
+                      {reli === null ? "N/A" : `${reli.toFixed(1)}%`}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl p-3" style={{ background: C.purpleLight }}>
-                  <p className="text-xs" style={{ color: C.purple }}>Attest</p>
-                  <p className="mt-1 text-lg font-bold" style={{ color: C.purple }}>
-                    {reli === null ? "N/A" : `${reli.toFixed(1)}%`}
-                  </p>
-                </div>
-              </div>
 
-              <p className="mt-3 text-xs" style={{ color: difference === null ? C.muted : difference > 0 ? C.green : difference < 0 ? C.red : C.muted }}>
-                {difference === null
-                  ? "Comparison scores were not returned by the backend."
-                  : `Difference: ${difference > 0 ? "+" : ""}${difference.toFixed(1)} percentage points`}
-              </p>
-            </article>
-          );
-        })}
-      </div>
+                <p className="mt-3 text-xs" style={{ color: difference === null ? C.muted : difference > 0 ? C.green : difference < 0 ? C.red : C.muted }}>
+                  {difference === null
+                    ? "Comparison scores were not returned by the backend."
+                    : `Difference: ${difference > 0 ? "+" : ""}${difference.toFixed(1)} percentage points`}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          className="mt-5 rounded-2xl p-4 sm:p-5"
+          style={{ background: C.canvas }}
+        >
+          <p className="text-sm leading-6" style={{ color: C.muted }}>
+            {SINGLE_MODE_MESSAGE}
+          </p>
+          <Link
+            to="/comparison"
+            className="mt-4 inline-flex rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
+            style={{ background: C.purple }}
+          >
+            Open Comparison Lab →
+          </Link>
+        </div>
+      )}
     </section>
   );
 }

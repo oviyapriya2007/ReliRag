@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test src/demo/correctionDemo.test.js src/evaluationThreshold.test.js"
+    "test": "node --test src/demo/correctionDemo.test.js src/evaluationThreshold.test.js src/comparisonScores.test.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
