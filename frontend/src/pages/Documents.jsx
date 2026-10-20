@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from 'react'
 import {
   deleteDocument,
@@ -239,23 +238,23 @@ function Documents() {
               </div>
 
               {busy && (
-                <div
-                  className="pipeline-progress-track mt-4"
-                  role="progressbar"
-                  aria-label="Document upload and indexing in progress"
-                  aria-valuetext="Uploading and indexing"
-                >
+                <>
                   <div
-                    className="pipeline-progress-fill"
-                    style={{ width: '100%' }}
-                  />
-                </div>
-              )}
+                    className="pipeline-progress-track mt-4"
+                    role="progressbar"
+                    aria-label="Document upload and indexing in progress"
+                    aria-valuetext="Uploading and indexing"
+                  >
+                    <div
+                      className="pipeline-progress-fill"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
 
-              {busy && (
-                <p className="mt-2 text-xs text-[#665A75]">
-                  Uploading your PDF and processing it. Please wait…
-                </p>
+                  <p className="mt-2 text-xs text-[#665A75]">
+                    Uploading your PDF and processing it. Please wait…
+                  </p>
+                </>
               )}
             </div>
           )}
@@ -281,11 +280,14 @@ function Documents() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[650px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-[#DCE8F5] text-[#29243A]">
               <tr>
                 <th scope="col" className="px-5 py-3.5 font-semibold sm:px-6">
                   Document
+                </th>
+                <th scope="col" className="whitespace-nowrap px-5 py-3.5 font-semibold">
+                  Document ID
                 </th>
                 <th scope="col" className="px-5 py-3.5 font-semibold">
                   Pages
@@ -293,7 +295,7 @@ function Documents() {
                 <th scope="col" className="px-5 py-3.5 font-semibold">
                   Chunks
                 </th>
-                <th scope="col" className="px-5 py-3.5 font-semibold">
+                <th scope="col" className="whitespace-nowrap px-5 py-3.5 font-semibold">
                   Upload Date
                 </th>
                 <th scope="col" className="px-5 py-3.5 font-semibold">
@@ -330,18 +332,27 @@ function Documents() {
                     </div>
                   </td>
 
+                  {/* Live document ID from the backend */}
+                  <td className="whitespace-nowrap px-5 py-4">
+                    <span className="inline-flex items-center rounded-lg border border-[#D8C4E3] bg-[#EAE0F0] px-2.5 py-1 font-mono text-xs font-semibold text-[#51416B]">
+                      {document.id}
+                    </span>
+                  </td>
+
                   <td className="px-5 py-4 text-[#51485B]">
-                    {document.pages}
+                    {document.pages ?? '—'}
                   </td>
 
                   <td className="px-5 py-4">
                     <span className="inline-flex min-w-10 items-center justify-center rounded-lg border border-[#C8D9EB] bg-[#DCE8F5] px-2.5 py-1 font-semibold text-[#51416B]">
-                      {document.chunks}
+                      {document.chunks ?? '—'}
                     </span>
                   </td>
 
                   <td className="whitespace-nowrap px-5 py-4 text-[#665A75]">
-                    {new Date(document.created_at).toLocaleDateString()}
+                    {document.created_at
+                      ? new Date(document.created_at).toLocaleDateString()
+                      : '—'}
                   </td>
 
                   <td className="px-5 py-4">
@@ -359,7 +370,7 @@ function Documents() {
 
               {documents.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="bg-[#F5F0F8] px-5 py-14 text-center">
+                  <td colSpan={6} className="bg-[#F5F0F8] px-5 py-14 text-center">
                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-[#C8D9EB] bg-[#DCE8F5] text-2xl text-[#51416B]">
                       ▤
                     </div>
