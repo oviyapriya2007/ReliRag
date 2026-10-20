@@ -1,5 +1,10 @@
+
 import { useEffect, useState } from 'react'
-import { USE_MOCK, getAnalyticsSummary } from '../../api/client'
+import {
+  USE_MOCK,
+  getAnalyticsSummary,
+  exportEvaluationsCsv,
+} from '../../api/client'
 
 const colors = {
   purple: '#554188',
@@ -234,11 +239,15 @@ function Section({ title, description, children, icon }) {
 
 function Analytics() {
   const [data, setData] = useState(null)
-  // The first load starts on mount (outside mock mode), so it begins as loading.
   const [loading, setLoading] = useState(!USE_MOCK)
   const [error, setError] = useState('')
   const [benchmarkRunId, setBenchmarkRunId] = useState('')
   const [topDocuments, setTopDocuments] = useState('5')
+
+  // CSV export state
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const [exportSuccess, setExportSuccess] = useState(false)
 
   function fetchAnalytics(filters = {}) {
     return getAnalyticsSummary({
@@ -254,6 +263,23 @@ function Analytics() {
     setLoading(true)
     setError('')
     return fetchAnalytics(filters)
+  }
+
+  async function handleExportCsv() {
+    setExporting(true)
+    setExportError('')
+    setExportSuccess(false)
+
+    try {
+      await exportEvaluationsCsv()
+      setExportSuccess(true)
+    } catch (err) {
+      setExportError(
+        err?.message || 'Failed to download the CSV file.',
+      )
+    } finally {
+      setExporting(false)
+    }
   }
 
   useEffect(() => {
@@ -273,10 +299,16 @@ function Analytics() {
               'linear-gradient(120deg, #F5F0FA 0%, #F1F6FC 55%, #FDF1F5 100%)',
           }}
         >
-          <p className="text-xs font-bold tracking-widest" style={{ color: colors.blue }}>
+          <p
+            className="text-xs font-bold tracking-widest"
+            style={{ color: colors.blue }}
+          >
             PERFORMANCE OVERVIEW
           </p>
-          <h1 className="mt-3 text-3xl font-bold sm:text-4xl" style={{ color: colors.purple }}>
+          <h1
+            className="mt-3 text-3xl font-bold sm:text-4xl"
+            style={{ color: colors.purple }}
+          >
             Analytics &amp; History
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-600">
@@ -348,7 +380,10 @@ function Analytics() {
           </span>
         </div>
 
-        <h1 className="mt-4 text-3xl font-bold sm:text-4xl" style={{ color: colors.purple }}>
+        <h1
+          className="mt-4 text-3xl font-bold sm:text-4xl"
+          style={{ color: colors.purple }}
+        >
           Analytics &amp; History
         </h1>
 
@@ -371,6 +406,50 @@ function Analytics() {
           </span>
         </div>
       </header>
+
+      {/* CSV export */}
+      <section
+        className="flex flex-col justify-between gap-4 rounded-2xl border bg-white p-5 sm:flex-row sm:items-center"
+        style={{ borderColor: colors.border }}
+      >
+        <div>
+          <h2 className="font-bold text-stone-800">
+            Export evaluation data
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-stone-500">
+            Download recorded evaluation results as a CSV file for reporting
+            and further analysis.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          disabled={exporting}
+          className="shrink-0 rounded-xl px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ backgroundColor: colors.purple }}
+        >
+          {exporting ? 'Downloading...' : '↓ Download CSV'}
+        </button>
+
+        {exportError && (
+          <p
+            role="alert"
+            className="text-sm leading-5 text-red-700 sm:basis-full"
+          >
+            Download failed: {exportError}
+          </p>
+        )}
+
+        {exportSuccess && (
+          <p
+            role="status"
+            className="text-sm leading-5 text-emerald-700 sm:basis-full"
+          >
+            CSV download started successfully.
+          </p>
+        )}
+      </section>
 
       <Section
         title="Analytics filters"
@@ -442,7 +521,10 @@ function Analytics() {
           </div>
         </form>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: colors.border }}>
+        <div
+          className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4"
+          style={{ borderColor: colors.border }}
+        >
           <p className="break-words text-xs leading-5 text-stone-500">
             {safeData.benchmark_run_id
               ? `Active benchmark: ${safeData.benchmark_run_id}`
@@ -552,7 +634,10 @@ function Analytics() {
 
           <section>
             <div className="mb-4 px-1">
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: colors.blue }}>
+              <p
+                className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: colors.blue }}
+              >
                 At a glance
               </p>
               <h2 className="mt-1 text-xl font-bold text-stone-800">
@@ -663,7 +748,10 @@ function Analytics() {
                       />
                     </div>
 
-                    <p className="mt-5 text-3xl font-bold" style={{ color: accent }}>
+                    <p
+                      className="mt-5 text-3xl font-bold"
+                      style={{ color: accent }}
+                    >
                       {formatPercent(first.rate)}
                     </p>
 
@@ -690,11 +778,15 @@ function Analytics() {
                       </div>
                       <div className="flex justify-between gap-3">
                         <span className="text-stone-500">Questions recorded</span>
-                        <strong className="text-stone-800">{formatCount(mode.questions)}</strong>
+                        <strong className="text-stone-800">
+                          {formatCount(mode.questions)}
+                        </strong>
                       </div>
                       <div className="flex justify-between gap-3">
                         <span className="text-stone-500">Insufficient evidence</span>
-                        <strong className="text-stone-800">{formatCount(mode.insufficient_evidence)}</strong>
+                        <strong className="text-stone-800">
+                          {formatCount(mode.insufficient_evidence)}
+                        </strong>
                       </div>
                     </div>
                   </article>
@@ -747,15 +839,25 @@ function Analytics() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-3">
-              <div className="rounded-xl border bg-white px-4 py-3" style={{ borderColor: colors.border }}>
-                <span className="text-xs text-stone-500">Correction trigger rate</span>
+              <div
+                className="rounded-xl border bg-white px-4 py-3"
+                style={{ borderColor: colors.border }}
+              >
+                <span className="text-xs text-stone-500">
+                  Correction trigger rate
+                </span>
                 <p className="mt-1 font-bold" style={{ color: colors.purple }}>
                   {formatPercent(corrections.trigger_rate)}
                 </p>
               </div>
 
-              <div className="rounded-xl border bg-white px-4 py-3" style={{ borderColor: colors.border }}>
-                <span className="text-xs text-stone-500">Failed after correction</span>
+              <div
+                className="rounded-xl border bg-white px-4 py-3"
+                style={{ borderColor: colors.border }}
+              >
+                <span className="text-xs text-stone-500">
+                  Failed after correction
+                </span>
                 <p className="mt-1 font-bold text-red-700">
                   {formatCount(corrections.failed_after_correction)}
                 </p>
@@ -809,10 +911,18 @@ function Analytics() {
                     <div
                       key={metric.label}
                       className="rounded-2xl border p-4 sm:p-5"
-                      style={{ borderColor: colors.border, backgroundColor: tint }}
+                      style={{
+                        borderColor: colors.border,
+                        backgroundColor: tint,
+                      }}
                     >
-                      <p className="text-sm text-stone-500">{metric.label}</p>
-                      <p className="mt-2 break-words text-2xl font-bold" style={{ color: colors.purple }}>
+                      <p className="text-sm text-stone-500">
+                        {metric.label}
+                      </p>
+                      <p
+                        className="mt-2 break-words text-2xl font-bold"
+                        style={{ color: colors.purple }}
+                      >
                         {formatLatency(metric.value)}
                       </p>
                     </div>
@@ -828,7 +938,10 @@ function Analytics() {
             icon="▤"
           >
             {topDocumentsList.length === 0 ? (
-              <div className="mt-5 rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: colors.border }}>
+              <div
+                className="mt-5 rounded-2xl border border-dashed p-8 text-center"
+                style={{ borderColor: colors.border }}
+              >
                 <div className="text-2xl">▤</div>
                 <p className="mt-3 font-semibold text-stone-700">
                   No document usage found
@@ -852,7 +965,8 @@ function Analytics() {
                         <div
                           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
                           style={{
-                            backgroundColor: index % 2 === 0 ? '#F1EBF8' : '#EDF3FA',
+                            backgroundColor:
+                              index % 2 === 0 ? '#F1EBF8' : '#EDF3FA',
                             color: colors.purple,
                           }}
                         >
@@ -872,14 +986,20 @@ function Analytics() {
                       <div className="flex shrink-0 gap-5 sm:gap-7">
                         <div>
                           <p className="text-xs text-stone-500">Retrievals</p>
-                          <p className="mt-1 text-lg font-bold" style={{ color: colors.purple }}>
+                          <p
+                            className="mt-1 text-lg font-bold"
+                            style={{ color: colors.purple }}
+                          >
                             {formatCount(safeDocument.retrievals)}
                           </p>
                         </div>
 
                         <div>
                           <p className="text-xs text-stone-500">Queries</p>
-                          <p className="mt-1 text-lg font-bold" style={{ color: colors.blue }}>
+                          <p
+                            className="mt-1 text-lg font-bold"
+                            style={{ color: colors.blue }}
+                          >
                             {formatCount(safeDocument.queries)}
                           </p>
                         </div>
