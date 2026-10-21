@@ -205,7 +205,9 @@ class EvaluationsEndpointTest(unittest.TestCase):
         self.assertEqual(item["claims"], [{"claim_text": "claim 0", "verdict": SUPPORTED,
                                            "evidence_chunk_id": self.chunk_ids[0],
                                            "evidence_quote": "a", "claude_verdict": None,
-                                           "evidence_error": None, "check_name": None}])
+                                           "evidence_error": None, "check_name": None,
+                                           "claude_evidence_chunk_id": None,
+                                           "claude_evidence_quote": None}])
 
     def test_latest_only_false_includes_superseded_evaluations(self):
         ids = self.seed()

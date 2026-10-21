@@ -20,7 +20,7 @@ from app.db import Base
 
 EMBEDDING_DIM = 384
 # Deterministic evaluator checks that can change a claim's verdict (Claim.check_name).
-CLAIM_CHECK_NAMES = ("evidence", "support", "citation", "uncited", "limitation")
+CLAIM_CHECK_NAMES = ("evidence", "support", "citation", "uncited", "limitation", "contradiction")
 
 
 class Document(Base):
@@ -194,6 +194,10 @@ class Claim(Base):
     claude_verdict: Mapped[str | None] = mapped_column(String(32))
     evidence_error: Mapped[str | None] = mapped_column(Text)
     check_name: Mapped[str | None] = mapped_column(String(16))
+    # The evidence Claude gave, even if a check rejected it; never support. Not a foreign key:
+    # a rejected chunk ID may name a chunk that was not retrieved or does not exist.
+    claude_evidence_chunk_id: Mapped[int | None] = mapped_column(Integer)
+    claude_evidence_quote: Mapped[str | None] = mapped_column(Text)
 
     evaluation: Mapped[Evaluation] = relationship(back_populates="claims")
     evidence_chunk: Mapped[DocumentChunk | None] = relationship()

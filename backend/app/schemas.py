@@ -48,7 +48,8 @@ class RetrievalResult(BaseModel):
     content: str
 
 
-ClaimCheckName = Literal["evidence", "support", "citation", "uncited", "limitation"]
+ClaimCheckName = Literal["evidence", "support", "citation", "uncited", "limitation",
+                         "contradiction"]
 
 
 class ClaimRead(BaseModel):
@@ -64,6 +65,14 @@ class ClaimRead(BaseModel):
         default=None, description="Why a check changed the claim's verdict, if one did.")
     check_name: ClaimCheckName | None = Field(
         default=None, description="Which check changed the claim's verdict, if one did.")
+    claude_evidence_chunk_id: int | None = Field(
+        default=None, description="The evidence chunk ID exactly as Claude gave it, kept even if "
+                                  "a check rejected it; not verified support (that is "
+                                  "`evidence_chunk_id`). Null for a claim a check added, and for "
+                                  "claims saved before this was recorded.")
+    claude_evidence_quote: str | None = Field(
+        default=None, description="The evidence quote exactly as Claude gave it; see "
+                                  "`claude_evidence_chunk_id`.")
 
 
 class EvaluationRead(BaseModel):

@@ -2,7 +2,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -19,6 +19,10 @@ DUPLICATE_SEARCH_FACTOR = 4
 RRF_K = 60
 # Most requirements of one question searched separately (each costs one vector search).
 MAX_SUBQUERIES = 6
+# A chunk among this many top results that is cut off mid-text brings its continuation, the
+# next chunk of its document (see `add_continuations`).
+CONTINUATION_RANKS = 3
+_SENTENCE_END_RE = re.compile(r"[.!?][\"'\u201d\u2019)\]]*\s*$")
 
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)]|\(?[a-z][.)])\s+(.+)$", re.MULTILINE)
 _QUESTION_RE = re.compile(r"[^?]*\?")
@@ -40,6 +44,9 @@ class RetrievedChunk:
     page: int | None
     text: str
     similarity: float
+    # Position of the chunk in its document (DocumentChunk.chunk_index), when known; used to
+    # tell source-contiguous chunks apart.
+    chunk_index: int | None = None
 
 
 def embed_query(question: str) -> list[float]:
@@ -121,6 +128,7 @@ def _nearest(
             Document.filename,
             DocumentChunk.page_number,
             DocumentChunk.content,
+            DocumentChunk.chunk_index,
             distance,
             score,
         )
@@ -141,6 +149,7 @@ def _nearest(
             page=row.page_number,
             text=row.content,
             similarity=1.0 - float(row.score),
+            chunk_index=row.chunk_index,
         ), 1.0 - float(row.distance))
         for row in db.execute(stmt)
     ]
@@ -232,12 +241,66 @@ def retrieve(
     whole = [chunk for chunk, _ in _search(db, query_embedding, k, document_ids)]
     requirements = split_requirements(question)
     if not requirements or not whole:
-        return whole
+        return add_continuations(db, whole, query_embedding)
     per_requirement = [
         _search(db, embedding, k, document_ids, score_embedding=query_embedding)
         for embedding in embed_texts(requirements)
     ]
-    return combine_requirement_results(whole, per_requirement, k, settings.similarity_gate)
+    return add_continuations(
+        db, combine_requirement_results(whole, per_requirement, k, settings.similarity_gate),
+        query_embedding)
+
+
+def add_continuations(
+    db: Session,
+    chunks: Sequence[RetrievedChunk],
+    query_embedding: Sequence[float],
+    *,
+    ranks: int = CONTINUATION_RANKS,
+) -> list[RetrievedChunk]:
+    """`chunks` with the continuation of each of the first `ranks` that is cut off mid-text.
+
+    Chunks are fixed-size windows, so a section that a top result starts (an entry's heading
+    and first facts) can end in the next window (the rest of the entry, such as its list of
+    items), which may rank too low to be retrieved. The continuation is the next chunk
+    (chunk_index + 1) of the same, not deleted, document; it is inserted right after the
+    chunk it continues, with its own similarity to the query, unless it is already among
+    `chunks`. Chunks without a known chunk_index are left as they are.
+    """
+    chunks = list(chunks)
+    present = {(chunk.document_id, chunk.chunk_index) for chunk in chunks}
+    wanted = [(chunk.document_id, chunk.chunk_index + 1) for chunk in chunks[:ranks]
+              if chunk.chunk_index is not None
+              and (chunk.document_id, chunk.chunk_index + 1) not in present
+              and not _SENTENCE_END_RE.search(chunk.text)]
+    if not wanted:
+        return chunks
+    distance = DocumentChunk.embedding.cosine_distance(query_embedding).label("distance")
+    stmt = (
+        select(DocumentChunk.id, DocumentChunk.document_id, Document.filename,
+               DocumentChunk.page_number, DocumentChunk.content, DocumentChunk.chunk_index,
+               distance)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .where(DocumentChunk.embedding.is_not(None), Document.deleted_at.is_(None),
+               or_(*(and_(DocumentChunk.document_id == document_id,
+                          DocumentChunk.chunk_index == chunk_index)
+                     for document_id, chunk_index in wanted)))
+    )
+    found = {
+        (row.document_id, row.chunk_index): RetrievedChunk(
+            chunk_id=row.id, document_id=row.document_id, document=row.filename,
+            page=row.page_number, text=row.content, similarity=1.0 - float(row.distance),
+            chunk_index=row.chunk_index)
+        for row in db.execute(stmt)
+    }
+    result = []
+    for chunk in chunks:
+        result.append(chunk)
+        if chunk.chunk_index is not None:
+            continuation = found.pop((chunk.document_id, chunk.chunk_index + 1), None)
+            if continuation is not None:
+                result.append(continuation)
+    return result
 
 
 def merge_ranked_chunks(
@@ -288,6 +351,7 @@ def load_logged_chunks(db: Session, answer_id: int) -> list[RetrievedChunk]:
             Document.filename,
             DocumentChunk.page_number,
             DocumentChunk.content,
+            DocumentChunk.chunk_index,
         )
         .join(DocumentChunk, DocumentChunk.id == RetrievalLog.chunk_id)
         .join(Document, Document.id == DocumentChunk.document_id)
@@ -302,6 +366,7 @@ def load_logged_chunks(db: Session, answer_id: int) -> list[RetrievedChunk]:
             page=row.page_number,
             text=row.content,
             similarity=row.similarity,
+            chunk_index=row.chunk_index,
         )
         for row in db.execute(stmt)
     ]

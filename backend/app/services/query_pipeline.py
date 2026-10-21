@@ -498,7 +498,8 @@ def save_evaluation(db: Session, answer: Answer, result: EvaluationResult) -> Ev
     """Insert one `evaluations` row with its `claims` and commit.
 
     Claims keep the evaluator's final (verified) verdicts and real chunk IDs, with Claude's
-    original verdict, the reason a check changed it, and which check (`check_name`). A failure
+    original verdict and evidence, the reason a check changed it, and which check
+    (`check_name`). A failure
     is rolled back and logged, leaving the committed answer untouched.
     """
     answer_id = answer.id
@@ -524,6 +525,8 @@ def save_evaluation(db: Session, answer: Answer, result: EvaluationResult) -> Ev
                     claude_verdict=claim.claude_verdict,
                     evidence_error=claim.evidence_error,
                     check_name=claim.check,
+                    claude_evidence_chunk_id=claim.claude_evidence_chunk_id,
+                    claude_evidence_quote=claim.claude_evidence_quote,
                 )
                 for claim in result.claims
             ],

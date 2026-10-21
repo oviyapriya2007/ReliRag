@@ -4,6 +4,12 @@ import { Link, useParams } from "react-router-dom";
 import { getQuery, USE_MOCK } from "../../api/client";
 import { thresholdCheck, thresholdPercent } from "../evaluationThreshold.js";
 import { comparisonScores, SINGLE_MODE_MESSAGE } from "../comparisonScores.js";
+import {
+  attemptLabel,
+  attemptOutcome,
+  claimVerification,
+  hasSelfContradiction,
+} from "../evaluationDisplay.js";
 
 const C = {
   purple: "#554188",
@@ -65,7 +71,11 @@ function badgeStyle(value) {
     return { color: C.green, background: C.greenLight };
   }
 
-  if (status === "CORRECTED") {
+  if (
+    ["CORRECTED", "PARTIALLY_SUPPORTED", "INSUFFICIENT_EVIDENCE", "EVALUATOR_ERROR"].includes(
+      status
+    )
+  ) {
     return { color: C.amber, background: C.amberLight };
   }
 
@@ -74,7 +84,7 @@ function badgeStyle(value) {
       "FAILED",
       "FAIL",
       "UNSUPPORTED",
-      "INSUFFICIENT_EVIDENCE",
+      "ERROR",
       "FAILED_AFTER_CORRECTION",
     ].includes(status)
   ) {
@@ -82,6 +92,19 @@ function badgeStyle(value) {
   }
 
   return { color: C.muted, background: "#F2F0F5" };
+}
+
+const OUTCOME_STATUS = {
+  passed: "PASSED",
+  failed: "FAILED",
+  evaluator_error: "EVALUATOR_ERROR",
+  insufficient: "INSUFFICIENT_EVIDENCE",
+  error: "ERROR",
+  not_evaluated: "NOT_EVALUATED",
+};
+
+function outcomeStyle(outcome) {
+  return badgeStyle(OUTCOME_STATUS[outcome.kind]);
 }
 
 function SectionHeading({ eyebrow, title, description, icon }) {
@@ -174,11 +197,15 @@ function getAttemptScore(attempt, key) {
   return normalizedScore(attempt?.evaluation?.[key]);
 }
 
-function ScoreComparison({ title, metric, before, after }) {
+function ScoreComparison({ title, metric, before, after, reportedAttemptNumber }) {
   const oldScore = getAttemptScore(before, metric);
   const newScore = getAttemptScore(after, metric);
   const difference =
     oldScore === null || newScore === null ? null : newScore - oldScore;
+  const sides = [
+    [before, oldScore],
+    [after, newScore],
+  ];
 
   return (
     <article
@@ -190,18 +217,27 @@ function ScoreComparison({ title, metric, before, after }) {
       </h3>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <div className="rounded-xl p-3" style={{ background: C.redLight }}>
-          <p className="text-xs" style={{ color: C.red }}>Before</p>
-          <p className="mt-1 text-xl font-bold" style={{ color: C.red }}>
-            {oldScore === null ? "N/A" : `${oldScore.toFixed(1)}%`}
-          </p>
-        </div>
-        <div className="rounded-xl p-3" style={{ background: C.greenLight }}>
-          <p className="text-xs" style={{ color: C.green }}>After</p>
-          <p className="mt-1 text-xl font-bold" style={{ color: C.green }}>
-            {newScore === null ? "N/A" : `${newScore.toFixed(1)}%`}
-          </p>
-        </div>
+        {sides.map(([attempt, score]) => {
+          const reported =
+            Number(attempt?.attempt_number) === Number(reportedAttemptNumber);
+          return (
+            <div
+              key={attempt?.attempt_number}
+              className="rounded-xl border p-3"
+              style={{
+                background: reported ? C.purpleLight : C.canvas,
+                borderColor: reported ? C.purple : C.border,
+              }}
+            >
+              <p className="text-xs" style={{ color: reported ? C.purple : C.muted }}>
+                {attemptLabel(attempt, reportedAttemptNumber)}
+              </p>
+              <p className="mt-1 text-xl font-bold" style={{ color: C.ink }}>
+                {score === null ? "N/A" : `${score.toFixed(1)}%`}
+              </p>
+            </div>
+          );
+        })}
       </div>
 
       {difference !== null && (
@@ -218,7 +254,8 @@ function ScoreComparison({ title, metric, before, after }) {
         >
           {difference > 0.05 ? "↑ " : difference < -0.05 ? "↓ " : ""}
           {difference > 0 ? "+" : ""}
-          {difference.toFixed(1)} percentage points
+          {difference.toFixed(1)} percentage points from attempt{" "}
+          {before?.attempt_number} to attempt {after?.attempt_number}
         </p>
       )}
     </article>
@@ -251,12 +288,7 @@ function AttemptHistory({ attempts, finalAttempt }) {
               finalAttempt != null &&
               Number(attemptNumber) === Number(finalAttempt.attempt_number);
 
-            const status =
-              evaluation.passed === true
-                ? "PASSED"
-                : evaluation.passed === false
-                  ? "FAILED"
-                  : item.status ?? "NOT EVALUATED";
+            const outcome = attemptOutcome(item);
 
             const metrics = [
               ["Faithfulness", evaluation.faithfulness],
@@ -282,7 +314,10 @@ function AttemptHistory({ attempts, finalAttempt }) {
                   <div>
                     <p className="text-sm font-bold" style={{ color: C.ink }}>
                       Attempt {attemptNumber}
-                      {isFinal ? " · Final attempt" : ""}
+                      {Number(attemptNumber) === 1
+                        ? " · Initial"
+                        : ` · Correction${item.strategy ? ` (${formatLabel(item.strategy)})` : ""}`}
+                      {isFinal ? " · Reported answer" : ""}
                     </p>
                     {item.model && (
                       <p className="mt-1 text-xs" style={{ color: C.muted }}>
@@ -292,13 +327,22 @@ function AttemptHistory({ attempts, finalAttempt }) {
                   </div>
                   <span
                     className="rounded-full px-3 py-1.5 text-xs font-bold"
-                    style={badgeStyle(status)}
+                    style={outcomeStyle(outcome)}
                   >
-                    {formatLabel(status).toUpperCase()}
+                    {outcome.label.toUpperCase()}
                   </span>
                 </div>
 
                 <div className="p-4 sm:p-5">
+                  {outcome.kind === "insufficient" && (
+                    <p
+                      className="mb-4 rounded-xl p-3 text-sm leading-6"
+                      style={{ background: C.amberLight, color: C.amber }}
+                    >
+                      Retrieval did not find enough evidence, so no answer was scored.
+                      This attempt was not evaluated; it did not fail an evaluation.
+                    </p>
+                  )}
                   <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {metrics.map(([label, value], metricIndex) => (
                       <div
@@ -397,46 +441,57 @@ function AnswerComparison({ before, after, reportedAttemptNumber }) {
       <SectionHeading
         eyebrow="Correction analysis"
         title="Before & after"
-        description="Compare the first answer with the correction attempt. The reported answer is marked. Sentence differences use exact text matching."
+        description={`Compare the first answer with the correction attempt. Attempt ${reportedAttemptNumber} is the reported answer. Sentence differences use exact text matching.`}
         icon="⇄"
       />
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <article
-          className="min-w-0 rounded-2xl border p-4 sm:p-5"
-          style={{ borderColor: "#F2CDD5", background: "#FFF8F9" }}
-        >
-          <span
-            className="inline-block rounded-full px-3 py-1 text-xs font-bold"
-            style={{ background: C.redLight, color: C.red }}
-          >
-            ORIGINAL
-          </span>
-          <h3 className="mt-3 font-bold" style={{ color: C.ink }}>
-            Attempt {before?.attempt_number}{reported(before)}
-          </h3>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-7" style={{ color: C.muted }}>
-            {beforeText || "No original answer was returned."}
-          </p>
-        </article>
-
-        <article
-          className="min-w-0 rounded-2xl border p-4 sm:p-5"
-          style={{ borderColor: "#C8E8D5", background: "#F6FCF8" }}
-        >
-          <span
-            className="inline-block rounded-full px-3 py-1 text-xs font-bold"
-            style={{ background: C.greenLight, color: C.green }}
-          >
-            CORRECTION
-          </span>
-          <h3 className="mt-3 font-bold" style={{ color: C.ink }}>
-            Attempt {after?.attempt_number}{reported(after)}
-          </h3>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-7" style={{ color: C.muted }}>
-            {afterText || "This attempt returned no answer."}
-          </p>
-        </article>
+        {[
+          [before, "INITIAL", beforeText || "No original answer was returned."],
+          [after, "CORRECTION", afterText || "This attempt returned no answer."],
+        ].map(([attempt, role, text]) => {
+          const isReported = Boolean(reported(attempt));
+          const outcome = attemptOutcome(attempt);
+          return (
+            <article
+              key={role}
+              className="min-w-0 rounded-2xl border p-4 sm:p-5"
+              style={{
+                borderColor: isReported ? C.purple : C.border,
+                background: isReported ? "#FAF8FE" : C.white,
+              }}
+            >
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className="inline-block rounded-full px-3 py-1 text-xs font-bold"
+                  style={{ background: C.purpleLight, color: C.purple }}
+                >
+                  {role}
+                </span>
+                <span
+                  className="inline-block rounded-full px-3 py-1 text-xs font-bold"
+                  style={outcomeStyle(outcome)}
+                >
+                  {outcome.label.toUpperCase()}
+                </span>
+                {isReported && (
+                  <span
+                    className="inline-block rounded-full px-3 py-1 text-xs font-bold text-white"
+                    style={{ background: C.purple }}
+                  >
+                    REPORTED
+                  </span>
+                )}
+              </div>
+              <h3 className="mt-3 font-bold" style={{ color: C.ink }}>
+                Attempt {attempt?.attempt_number}{reported(attempt)}
+              </h3>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-7" style={{ color: C.muted }}>
+                {text}
+              </p>
+            </article>
+          );
+        })}
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -488,9 +543,17 @@ function CorrectionReason({ attempts, finalAttempt, selectionReason }) {
   const first = attempts[0];
   const correction = attempts.length > 1 ? attempts[attempts.length - 1] : null;
   const firstEvaluation = first?.evaluation;
+  const firstOutcome = attemptOutcome(first);
 
   const fields = [
-    ["Attempt 1 failure type", formatLabel(firstEvaluation?.failure_type)],
+    [
+      "Attempt 1 failure type",
+      firstOutcome.kind === "insufficient"
+        ? "Not evaluated (insufficient evidence)"
+        : firstOutcome.kind === "passed"
+          ? "None (passed)"
+          : formatLabel(firstEvaluation?.failure_type),
+    ],
     [
       "Attempt 1 evaluator feedback",
       firstEvaluation?.feedback || "No evaluator feedback was returned.",
@@ -786,12 +849,12 @@ function Evaluation() {
     not_evaluated: { label: "NOT EVALUATED", style: badgeStyle("UNKNOWN") },
   }[threshold.status];
 
-  const finalVerdict =
-    evaluation?.passed === true
-      ? "PASSED"
-      : evaluation?.passed === false
-        ? "FAILED"
-        : finalAttempt?.status ?? query?.status ?? "NOT EVALUATED";
+  const finalOutcome = attemptOutcome(
+    finalAttempt ?? { status: query?.status, evaluation: query?.evaluation }
+  );
+  const finalVerdict = OUTCOME_STATUS[finalOutcome.kind];
+  const finalVerdictLabel = finalOutcome.label;
+  const selfContradiction = hasSelfContradiction(evaluation);
 
   return (
     <div className="evaluation-dashboard space-y-6">
@@ -849,7 +912,7 @@ function Evaluation() {
                 className="rounded-full px-3 py-2 text-xs font-bold"
                 style={badgeStyle(finalVerdict)}
               >
-                {formatLabel(finalVerdict).toUpperCase()}
+                {finalVerdictLabel.toUpperCase()}
               </span>
             </div>
           )}
@@ -959,12 +1022,18 @@ function Evaluation() {
                   className="rounded-full px-3 py-1.5 text-xs font-bold"
                   style={badgeStyle(finalVerdict)}
                 >
-                  {formatLabel(finalVerdict).toUpperCase()}
+                  {finalVerdictLabel.toUpperCase()}
                 </span>
               </div>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-7" style={{ color: C.muted }}>
                 {finalAnswer || "No final answer was returned."}
               </p>
+              {finalOutcome.kind === "insufficient" && (
+                <p className="mt-3 text-xs leading-5" style={{ color: C.amber }}>
+                  The reported attempt was not evaluated: retrieval did not find enough
+                  evidence to generate and score an answer, so no scores are shown.
+                </p>
+              )}
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1018,9 +1087,9 @@ function Evaluation() {
                     icon="↗"
                   />
                   <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <ScoreComparison title="Faithfulness" metric="faithfulness" before={initialAttempt} after={correctionAttempt} />
-                    <ScoreComparison title="Answer relevance" metric="answer_relevance" before={initialAttempt} after={correctionAttempt} />
-                    <ScoreComparison title="Context relevance" metric="context_relevance" before={initialAttempt} after={correctionAttempt} />
+                    <ScoreComparison title="Faithfulness" metric="faithfulness" before={initialAttempt} after={correctionAttempt} reportedAttemptNumber={finalAttempt.attempt_number} />
+                    <ScoreComparison title="Answer relevance" metric="answer_relevance" before={initialAttempt} after={correctionAttempt} reportedAttemptNumber={finalAttempt.attempt_number} />
+                    <ScoreComparison title="Context relevance" metric="context_relevance" before={initialAttempt} after={correctionAttempt} reportedAttemptNumber={finalAttempt.attempt_number} />
                   </div>
                 </section>
               )}
@@ -1064,7 +1133,15 @@ function Evaluation() {
                 The evaluator could not complete, so this answer fails regardless of the threshold.
               </p>
             )}
-            {threshold.matchesVerdict === false && (
+            {threshold.matchesVerdict === false && selfContradiction && !evaluation.passed && (
+              <p className="mt-3 text-xs leading-5" style={{ color: C.red }}>
+                Every score meets the threshold, but verification found that the answer
+                contradicts itself (a limitation statement denies something the answer
+                claims), so the backend failed it. Scores alone cannot pass a
+                self-contradictory answer.
+              </p>
+            )}
+            {threshold.matchesVerdict === false && !(selfContradiction && !evaluation.passed) && (
               <p className="mt-3 text-xs leading-5" style={{ color: C.muted }}>
                 The stored verdict ({evaluation.passed ? "passed" : "failed"}) differs from this
                 check. It was recorded with the pass threshold in effect when this answer was
@@ -1132,6 +1209,10 @@ function Evaluation() {
                       : null;
 
                   const selected = selectedClaim === index;
+                  const verification =
+                    typeof claim === "object" && claim !== null
+                      ? claimVerification(claim)
+                      : null;
 
                   return (
                     <article
@@ -1159,27 +1240,80 @@ function Evaluation() {
                             {formatLabel(verdict).toUpperCase()}
                           </span>
                         )}
+                        {verification?.downgraded && (
+                          <span
+                            className="w-full text-xs font-semibold"
+                            style={{ color: C.amber }}
+                          >
+                            Changed by verification: {verification.checkLabel}
+                            {verification.originalVerdict
+                              ? ` (Claude: ${formatLabel(verification.originalVerdict)})`
+                              : ""}
+                          </span>
+                        )}
                       </button>
 
                       {selected && typeof claim === "object" && claim !== null && (
                         <div className="mt-4 space-y-3 border-t pt-4" style={{ borderColor: C.border }}>
+                          {verification?.downgraded && (
+                            <div
+                              className="rounded-xl p-3 text-sm leading-6"
+                              style={{ background: C.amberLight, color: C.ink }}
+                            >
+                              <p>
+                                <strong style={{ color: C.amber }}>Verification: </strong>
+                                {verification.checkLabel}
+                              </p>
+                              {verification.reason && (
+                                <p className="mt-1">
+                                  <strong style={{ color: C.amber }}>Reason: </strong>
+                                  {verification.reason}
+                                </p>
+                              )}
+                              {verification.originalVerdict && (
+                                <p className="mt-1">
+                                  <strong style={{ color: C.amber }}>Claude's verdict: </strong>
+                                  {formatLabel(verification.originalVerdict)}, changed to{" "}
+                                  {formatLabel(claim.verdict)}
+                                </p>
+                              )}
+                            </div>
+                          )}
                           {claim.evidence_chunk_id != null && (
                             <p className="text-sm" style={{ color: C.muted }}>
-                              <strong style={{ color: C.purple }}>Evidence chunk ID: </strong>
+                              <strong style={{ color: C.purple }}>Verified evidence chunk ID: </strong>
                               {claim.evidence_chunk_id}
                             </p>
                           )}
                           {claim.evidence_quote && (
                             <p className="text-sm leading-6" style={{ color: C.muted }}>
-                              <strong style={{ color: C.purple }}>Evidence quote: </strong>
+                              <strong style={{ color: C.purple }}>Verified evidence quote: </strong>
                               {claim.evidence_quote}
                             </p>
                           )}
-                          {claim.reason && (
-                            <p className="text-sm leading-6" style={{ color: C.muted }}>
-                              <strong style={{ color: C.purple }}>Reason: </strong>
-                              {claim.reason}
+                          {claim.evidence_chunk_id == null && !claim.evidence_quote && (
+                            <p className="text-sm" style={{ color: C.muted }}>
+                              No verified evidence supports this claim.
                             </p>
+                          )}
+                          {verification?.originalEvidence && (
+                            <div
+                              className="rounded-xl border p-3 text-sm leading-6"
+                              style={{ borderColor: C.border, color: C.muted }}
+                            >
+                              <p className="text-xs font-bold" style={{ color: C.purple }}>
+                                Evidence as Claude gave it
+                                {claim.evidence_chunk_id == null
+                                  ? " (rejected by verification; not counted as support)"
+                                  : ""}
+                              </p>
+                              {verification.originalEvidence.chunkId != null && (
+                                <p className="mt-1">Chunk ID: {verification.originalEvidence.chunkId}</p>
+                              )}
+                              {verification.originalEvidence.quote && (
+                                <p className="mt-1 italic">“{verification.originalEvidence.quote}”</p>
+                              )}
+                            </div>
                           )}
                           <details>
                             <summary className="cursor-pointer text-xs font-bold" style={{ color: C.purple }}>

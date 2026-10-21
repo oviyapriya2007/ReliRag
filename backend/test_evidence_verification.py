@@ -171,6 +171,78 @@ class NumberTest(ThresholdPinned):
                 self.assertIn("do not occur in the cited passage", judged.evidence_error)
                 self.assertFalse(result.passed)
 
+    RATE_PASSAGE = "Late returns incur a fee of $3 per item per calendar day."
+    RATE_QUOTE = "Late returns incur a fee of $3 per item per calendar day"
+
+    def evaluate_calculation(self, question, answer, claims):
+        with patch("app.services.evaluator.call_claude",
+                   return_value=llm_result(reply(claims))):
+            return evaluate_answer(question, answer, chunks([self.RATE_PASSAGE]))
+
+    def test_correct_calculation_from_evidence_and_question_is_supported(self):
+        question = "Two items are returned five days late. What is the total fee?"
+        cases = {
+            "one step": ("The fee is 2 × 5 × $3 = $30 [1].",
+                         ["The fee is 2 × 5 × $3 = $30."]),
+            "chained steps": ("Per item, $3 × 5 days = $15 [1]. For two items, $15 × 2 = $30 [1].",
+                              ["Per item, $3 × 5 days = $15.", "For two items, $15 × 2 = $30."]),
+            "restated result": ("The total fee is 2 × 5 × $3 = $30 [1].",
+                                ["The fee is 2 × 5 × $3 = $30.", "The total fee is $30."]),
+        }
+        for name, (answer, texts) in cases.items():
+            with self.subTest(name):
+                result = self.evaluate_calculation(
+                    question, answer, [claim(text, SUPPORTED, 100, self.RATE_QUOTE)
+                                       for text in texts])
+                self.assertEqual([c.verdict for c in result.claims], [SUPPORTED] * len(texts),
+                                 [c.evidence_error for c in result.claims])
+                self.assertTrue(result.passed)
+
+    def test_wrong_or_ungrounded_calculation_is_unsupported(self):
+        cases = {
+            "wrong result": ("Two items are returned five days late. What is the total fee?",
+                             "The fee is 2 × 5 × $3 = $35."),
+            "question numbers only": ("A fee of $4 applies for five days. What is the total?",
+                                      "The fee is $4 × 5 = $20."),
+            "question number stated as fact": ("Is the late fee $4 per item per calendar day?",
+                                               "Late returns incur a fee of $4 per item per "
+                                               "calendar day."),
+        }
+        for name, (question, text) in cases.items():
+            with self.subTest(name):
+                result = self.evaluate_calculation(
+                    question, f"{text[:-1]} [1].", [claim(text, SUPPORTED, 100, self.RATE_QUOTE)])
+                judged = result.claims[0]
+                self.assertEqual((judged.verdict, judged.check), (UNSUPPORTED, CHECK_SUPPORT))
+                self.assertIn("do not occur in the cited passage", judged.evidence_error)
+                self.assertFalse(result.passed)
+
+    def test_restated_result_must_still_match_the_evidence_words(self):
+        result = self.evaluate_calculation(
+            "Two items are returned five days late. What is the total fee?",
+            "The fee is 2 × 5 × $3 = $30 [1]. The total parking charge is $30 [1].",
+            [claim("The fee is 2 × 5 × $3 = $30.", SUPPORTED, 100, self.RATE_QUOTE),
+             claim("The total parking charge is $30.", SUPPORTED, 100, self.RATE_QUOTE)])
+        self.assertEqual([c.verdict for c in result.claims], [SUPPORTED, UNSUPPORTED])
+        self.assertEqual(result.claims[1].evidence_error,
+                         "evidence_quote does not support the claim")
+
+    def test_calculation_parsing(self):
+        cases = {
+            "- Fee per item = ₹20 × 4 days = ₹80": [(("20", "4"), "80", True)],
+            "2 items x 4 days x 20 = 160": [(("2", "4", "20"), "160", True)],
+            "10 + 2 × 3 = 16": [(("10", "2", "3"), "16", True)],
+            "1,000 / 4 = 250.00": [(("1000", "4"), "250.00", True)],
+            "Pay 3 × 2 = 7": [(("3", "2"), "7", False)],
+            "a 3-day loan = 3 days": [],
+            "twenty-five = 25": [],
+            "costs 5, then × 2 = 10": [],
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual([(c.operands, c.result, c.correct)
+                                  for c in answer_checks._calculations(text)], expected)
+
     def test_number_words(self):
         cases = {"twenty-five units": {"25"}, "sixty one": {"61"}, "two hundred items": set(),
                  "one of the steps": set(), "3 or three": {"3"}, "1,500 rows": {"1500"}}

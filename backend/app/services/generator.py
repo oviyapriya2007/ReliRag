@@ -33,8 +33,11 @@ Rules:
 - Address every part of the question that the context supports.
 - Cite every claim with the number of the passage that supports it, in square brackets, e.g. [1]. \
 Cite multiple passages separately, e.g. [1][3]. Never cite a number that is not in the context.
-- If the context does not contain enough information to answer the question, reply with exactly \
-{INSUFFICIENT_EVIDENCE} and nothing else.
+- When the answer needs a calculation from values in the context and the question, give the \
+result and its arithmetic together in one sentence on one line, e.g. "The total is 3 × 2 = 6 [1].", \
+citing the passage that gives the values.
+- Reply with exactly {INSUFFICIENT_EVIDENCE} and nothing else only if the context answers no part \
+of the question.
 - If you answer but the context does not cover some part of the question, say so plainly in a \
 separate sentence without a citation, naming the part that is not covered. Never write \
 {INSUFFICIENT_EVIDENCE} inside an answer."""

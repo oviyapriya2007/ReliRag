@@ -42,8 +42,13 @@ CHECK_SUPPORT = "support"
 CHECK_CITATION = "citation"
 CHECK_UNCITED = "uncited"
 CHECK_LIMITATION = "limitation"
+CHECK_CONTRADICTION = "contradiction"
 assert {CHECK_EVIDENCE, CHECK_SUPPORT, CHECK_CITATION, CHECK_UNCITED,
-        CHECK_LIMITATION} == set(CLAIM_CHECK_NAMES)
+        CHECK_LIMITATION, CHECK_CONTRADICTION} == set(CLAIM_CHECK_NAMES)
+
+# Fewest characters two chunks must share at their boundary to be joined without a recorded
+# chunk index (the chunker's windows overlap); see `join_adjacent`.
+MIN_CHUNK_OVERLAP = 10
 
 SYSTEM_PROMPT = """You are a strict evaluator for a retrieval-augmented question answering system. \
 You receive a question, the retrieved passages, and an answer generated from those passages. \
@@ -167,6 +172,11 @@ class ClaimVerdict:
     `additional_evidence` and `conflicting_evidence` are verified (chunk_id, quote) pairs from
     other passages that support or contradict the claim; they are used for scoring and
     correction but only the main evidence, and a downgrade's reason, are stored.
+
+    `claude_evidence_chunk_id` and `claude_evidence_quote` are the main evidence exactly as
+    Claude gave it (None for a claim added by a check), kept for debugging even when a check
+    rejected it. They are never support: only `evidence_chunk_id`/`evidence_quote` are, and
+    those are None for an unsupported claim whose evidence failed a check.
     """
 
     claim_text: str
@@ -178,6 +188,8 @@ class ClaimVerdict:
     check: str | None = None
     additional_evidence: tuple[tuple[int, str], ...] = ()
     conflicting_evidence: tuple[tuple[int, str], ...] = ()
+    claude_evidence_chunk_id: int | None = None
+    claude_evidence_quote: str | None = None
 
     @property
     def evidence(self) -> list[tuple[int, str]]:
@@ -261,13 +273,84 @@ def parse_evaluator_output(text: str) -> EvaluatorOutput:
 _normalize = normalize_text
 
 
-def verify_evidence(claim: ClaimJudgement, chunks_by_id: Mapping[int, RetrievedChunk]) -> str | None:
+Joins = Mapping[int, Sequence[tuple[int, str]]]
+
+
+def _follows(first: RetrievedChunk, second: RetrievedChunk) -> bool:
+    """True if `second` is the chunk right after `first` in the same document: by recorded
+    chunk index, or, when either index is unknown, by consecutive chunk ID on the same page."""
+    if first.document_id != second.document_id:
+        return False
+    if first.chunk_index is not None and second.chunk_index is not None:
+        return second.chunk_index == first.chunk_index + 1
+    return second.chunk_id == first.chunk_id + 1 and first.page == second.page
+
+
+def join_adjacent(first: RetrievedChunk, second: RetrievedChunk) -> str | None:
+    """The source text `first` and `second` cover together, or None if they are not
+    source-contiguous (see `_follows`).
+
+    The chunker's windows overlap, so the longest end of `first` that starts `second` is
+    counted once. Without that overlap they are joined only when both chunk indices are
+    known: directly on one page, with a space across a page break. Chunks of different
+    documents, or with a gap between them, are never joined.
+    """
+    if not _follows(first, second):
+        return None
+    head, tail = first.text, second.text
+    for size in range(min(len(head), len(tail)), MIN_CHUNK_OVERLAP - 1, -1):
+        if head.endswith(tail[:size]):
+            return head + tail[size:]
+    if first.chunk_index is None or second.chunk_index is None:
+        return None
+    return head + tail if first.page == second.page else f"{head} {tail}"
+
+
+def contiguous_joins(chunks: Sequence[RetrievedChunk]) -> dict[int, list[tuple[int, str]]]:
+    """For each retrieved chunk ID, (adjacent retrieved chunk ID, their joined text) pairs."""
+    joins: dict[int, list[tuple[int, str]]] = {}
+    for first in chunks:
+        for second in chunks:
+            if first.chunk_id == second.chunk_id:
+                continue
+            text = join_adjacent(first, second)
+            if text is not None:
+                joins.setdefault(first.chunk_id, []).append((second.chunk_id, text))
+                joins.setdefault(second.chunk_id, []).append((first.chunk_id, text))
+    return joins
+
+
+def locate_quote(chunk_id: int, quote: str, chunks_by_id: Mapping[int, RetrievedChunk],
+                 joins: Joins | None = None) -> tuple[int, str] | None:
+    """(chunk ID, text) where `quote` occurs, starting from chunk `chunk_id`, or None.
+
+    The quote is looked for in the chunk, then across its boundary with an adjacent retrieved
+    chunk of the same document (`contiguous_joins`). A quote found entirely in that neighbor
+    is located there; one spanning the boundary keeps `chunk_id`, with the joined text.
+    """
+    chunk = chunks_by_id.get(chunk_id)
+    if chunk is None:
+        return None
+    if answer_checks.quote_occurs(quote, chunk.text):
+        return chunk_id, chunk.text
+    for neighbor_id, text in (joins or {}).get(chunk_id, ()):
+        if answer_checks.quote_occurs(quote, text):
+            neighbor = chunks_by_id[neighbor_id]
+            if answer_checks.quote_occurs(quote, neighbor.text):
+                return neighbor_id, neighbor.text
+            return chunk_id, text
+    return None
+
+
+def verify_evidence(claim: ClaimJudgement, chunks_by_id: Mapping[int, RetrievedChunk],
+                    joins: Joins | None = None) -> str | None:
     """Return why the claim's evidence is invalid, or None if it checks out.
 
-    Evidence must reference a supplied chunk and quote text that occurs in that chunk
-    (see `answer_checks.quote_occurs`: case, whitespace, punctuation, typographic quote/dash
-    differences, and line-break hyphenation are ignored, but every word must match in order).
-    Unsupported claims may omit evidence entirely.
+    Evidence must reference a supplied chunk and quote text that occurs in that chunk, or
+    across its boundary with an adjacent retrieved chunk of the same document
+    (`locate_quote`; see `answer_checks.quote_occurs`: case, whitespace, punctuation,
+    typographic quote/dash differences, and line-break hyphenation are ignored, but every
+    word must match in order). Unsupported claims may omit evidence entirely.
     """
     chunk_id, quote = claim.evidence_chunk_id, claim.evidence_quote
     if chunk_id is None and not quote:
@@ -279,7 +362,7 @@ def verify_evidence(claim: ClaimJudgement, chunks_by_id: Mapping[int, RetrievedC
         return f"evidence_chunk_id {chunk_id} is not one of the retrieved chunks"
     if not _normalize(quote or ""):
         return f"no evidence_quote given for chunk {chunk_id}"
-    if not answer_checks.quote_occurs(quote, chunk.text):
+    if locate_quote(chunk_id, quote, chunks_by_id, joins) is None:
         return f"evidence_quote does not appear in chunk {chunk_id}"
     return None
 
@@ -293,16 +376,17 @@ def _lower_verdict(verdict: str, cap: str | None) -> str:
     return verdict
 
 
-def _verified(items: Sequence[EvidenceItem],
-              chunks_by_id: Mapping[int, RetrievedChunk]) -> list[tuple[int, str]]:
-    """The (chunk_id, quote) pairs whose quote occurs in that retrieved chunk, without repeats;
+def _verified(items: Sequence[EvidenceItem], chunks_by_id: Mapping[int, RetrievedChunk],
+              joins: Joins | None = None) -> list[tuple[int, str, str]]:
+    """(chunk_id, quote, text) for each item whose quote `locate_quote` finds, without repeats;
     anything else is dropped, never trusted."""
-    found: dict[tuple[int, str], tuple[int, str]] = {}
+    found: dict[tuple[int, str], tuple[int, str, str]] = {}
     for item in items:
-        chunk = chunks_by_id.get(item.evidence_chunk_id)
-        if chunk is not None and answer_checks.quote_occurs(item.evidence_quote, chunk.text):
-            key = (item.evidence_chunk_id, _normalize(item.evidence_quote))
-            found.setdefault(key, (item.evidence_chunk_id, item.evidence_quote))
+        located = locate_quote(item.evidence_chunk_id, item.evidence_quote, chunks_by_id, joins)
+        if located is not None:
+            chunk_id, text = located
+            key = (chunk_id, _normalize(item.evidence_quote))
+            found.setdefault(key, (chunk_id, item.evidence_quote, text))
     return list(found.values())
 
 
@@ -311,39 +395,57 @@ def describe_evidence(chunk: RetrievedChunk, quote: str) -> str:
     return f'chunk {chunk.chunk_id} ({chunk.document}{page}): "{quote}"'
 
 
-def judge_claim(claim: ClaimJudgement, chunks_by_id: Mapping[int, RetrievedChunk]) -> ClaimVerdict:
+def judge_claim(claim: ClaimJudgement, chunks_by_id: Mapping[int, RetrievedChunk], *,
+                premises: set[str] = frozenset(),
+                derived: set[str] = frozenset(),
+                premise_names: set[str] = frozenset(),
+                known: frozenset[str] = frozenset(),
+                joins: Joins | None = None,
+                cited_texts: Sequence[str] = ()) -> ClaimVerdict:
     """Apply evidence verification: a claim with invalid evidence is always unsupported.
 
     Claude judges whether the evidence means what the claim says; these checks can only lower
-    that verdict. The main evidence must be valid (`verify_evidence`). Additional evidence from
-    other passages counts only if its quote is verified too, and all verified evidence together
-    must pass `answer_checks.support_cap`. A verified passage reported as contradicting a
-    supported claim, and relevant to it (`answer_checks.conflict_problem`), leaves the claim at
-    most partially supported, with the conflicting chunk, document, page, and quote recorded.
+    that verdict. The main evidence must be valid (`verify_evidence`); a quote that continues
+    into an adjacent chunk of the same document is checked against their joined text, and one
+    found wholly in that neighbor is recorded against it. Additional evidence from other
+    passages counts only if its quote is verified too, and all verified evidence together
+    must pass `answer_checks.support_cap` (with the question's numbers and names, `premises`
+    and `premise_names`, and the `known` names). A verified passage reported as contradicting
+    a supported claim, and relevant to it (`answer_checks.conflict_problem`), leaves the claim
+    at most partially supported, with the conflicting chunk, document, page, and quote recorded.
+
+    Claude's verdict and evidence are always kept (`claude_verdict`, `claude_evidence_*`);
+    the verified evidence is cleared whenever the final verdict is unsupported.
     """
-    error = verify_evidence(claim, chunks_by_id)
+    given = {"claude_evidence_chunk_id": claim.evidence_chunk_id,
+             "claude_evidence_quote": claim.evidence_quote}
+    error = verify_evidence(claim, chunks_by_id, joins)
     if error is not None:
         return ClaimVerdict(claim.claim_text, UNSUPPORTED, None, None, claim.verdict, error,
-                            CHECK_EVIDENCE)
+                            CHECK_EVIDENCE, **given)
     if claim.verdict == UNSUPPORTED:
-        return ClaimVerdict(claim.claim_text, claim.verdict, claim.evidence_chunk_id,
-                            claim.evidence_quote, claim.verdict, None)
-    main = (claim.evidence_chunk_id, claim.evidence_quote)
-    additional = [item for item in _verified(claim.additional_evidence, chunks_by_id)
-                  if (item[0], _normalize(item[1])) != (main[0], _normalize(main[1]))]
+        return ClaimVerdict(claim.claim_text, claim.verdict, None, None, claim.verdict, None,
+                            **given)
+    main_id, main_text = locate_quote(claim.evidence_chunk_id, claim.evidence_quote,
+                                      chunks_by_id, joins)
+    main = (main_id, claim.evidence_quote, main_text)
+    additional = [item for item in _verified(claim.additional_evidence, chunks_by_id, joins)
+                  if (item[0], _normalize(item[1])) != (main_id, _normalize(main[1]))]
     evidence = [main, *additional]
     cap, reason = answer_checks.support_cap(
-        claim.claim_text, [(quote, chunks_by_id[chunk_id].text) for chunk_id, quote in evidence])
+        claim.claim_text, [(quote, text) for _, quote, text in evidence],
+        premises=premises, derived=derived, premise_names=premise_names, known=known,
+        cited_texts=cited_texts)
     verdict = _lower_verdict(claim.verdict, cap)
     if verdict == UNSUPPORTED:
         return ClaimVerdict(claim.claim_text, UNSUPPORTED, None, None, claim.verdict, reason,
-                            CHECK_SUPPORT)
+                            CHECK_SUPPORT, **given)
 
-    quotes = [quote for _, quote in evidence]
+    quotes = [quote for _, quote, _ in evidence]
     conflicts = [
-        (chunk_id, quote) for chunk_id, quote in _verified(claim.conflicting_evidence, chunks_by_id)
-        if answer_checks.conflict_problem(claim.claim_text, quote, chunks_by_id[chunk_id].text,
-                                          quotes) is None
+        (chunk_id, quote) for chunk_id, quote, text
+        in _verified(claim.conflicting_evidence, chunks_by_id, joins)
+        if answer_checks.conflict_problem(claim.claim_text, quote, text, quotes) is None
     ]
     if conflicts:
         verdict = _lower_verdict(verdict, CAP_PARTIAL)
@@ -351,21 +453,30 @@ def judge_claim(claim: ClaimJudgement, chunks_by_id: Mapping[int, RetrievedChunk
                                               for chunk_id, quote in conflicts)
         reason = f"{reason}; {note}" if reason else note
     changed = verdict != claim.verdict
-    return ClaimVerdict(claim.claim_text, verdict, claim.evidence_chunk_id, claim.evidence_quote,
+    return ClaimVerdict(claim.claim_text, verdict, main_id, claim.evidence_quote,
                         claim.verdict, reason if changed else None,
-                        CHECK_SUPPORT if changed else None, tuple(additional), tuple(conflicts))
+                        CHECK_SUPPORT if changed else None,
+                        tuple((chunk_id, quote) for chunk_id, quote, _ in additional),
+                        tuple(conflicts), **given)
 
 
-def judge_limitations(statements: Sequence[str]) -> tuple[list[str], list[ClaimVerdict]]:
+def judge_limitations(statements: Sequence[str],
+                      claims: Sequence[ClaimVerdict] = ()) -> tuple[list[str], list[ClaimVerdict]]:
     """(limitation statements, unsupported claims for statements that assert facts).
 
-    A statement counts as a limitation only if it says what is missing or uncertain and
-    asserts nothing else; anything else labeled a limitation is scored as an unsupported claim,
-    so a factual claim cannot avoid the faithfulness check by being called a limitation.
+    A statement counts as a limitation if it says what is missing or uncertain and asserts
+    nothing else, or if every other clause of it only restates one of the answer's `claims`,
+    which are scored on their own (`answer_checks.unscored_parts`): "The passages mention
+    that X contains Y, but the text is cut off before the list" when "X contains Y" is a
+    claim. Anything else labeled a limitation is scored as an unsupported claim, so a factual
+    claim cannot avoid the faithfulness check by being called a limitation.
     """
+    claim_texts = [claim.claim_text for claim in claims]
     limitations, mislabeled = [], []
     for statement in statements:
-        if answer_checks.is_pure_limitation(statement):
+        if (answer_checks.is_pure_limitation(statement)
+                or (answer_checks.is_limitation_statement(statement)
+                    and not answer_checks.unscored_parts(statement, claim_texts))):
             limitations.append(statement)
         else:
             mislabeled.append(ClaimVerdict(
@@ -374,8 +485,44 @@ def judge_limitations(statements: Sequence[str]) -> tuple[list[str], list[ClaimV
     return limitations, mislabeled
 
 
+def judge_contradictions(
+    answer: str, limitations: Sequence[str], claims: Sequence[ClaimVerdict],
+    listed: Sequence[str] = (),
+) -> tuple[list[str], list[ClaimVerdict]]:
+    """(limitations that stand, unsupported claims for limitations the answer contradicts).
+
+    A limitation contradicts the answer when one of its own factual claims states what the
+    limitation says the sources leave out (`answer_checks.contradicted_claim`). Besides the
+    evaluator's `limitations`, every limitation sentence of the answer that the evaluator did
+    not list (`listed`, its limitation statements before `judge_limitations`) is checked, so
+    a contradiction cannot pass unnoticed because it was not reported.
+    """
+    def key(text: str) -> str:
+        return _normalize(answer_checks.strip_citations(text)).rstrip(" .!?;:")
+
+    claim_texts = [claim.claim_text for claim in claims]
+    seen = {key(text) for text in [*limitations, *listed]}
+    unlisted = [answer_checks.strip_citations(sentence.text).strip()
+                for sentence in answer_checks.split_sentences(answer)]
+    unlisted = [text for text in unlisted
+                if key(text) not in seen and answer_checks.is_pure_limitation(text)]
+    kept, contradictions = [], []
+    for statement in [*limitations, *unlisted]:
+        contradicted = answer_checks.contradicted_claim(statement, claim_texts)
+        if contradicted is None:
+            if statement in limitations:
+                kept.append(statement)
+            continue
+        contradictions.append(ClaimVerdict(
+            statement, UNSUPPORTED, None, None, None,
+            f'says the sources do not cover what the answer itself claims: "{contradicted}"',
+            CHECK_CONTRADICTION))
+    return kept, contradictions
+
+
 def check_citations(
-    answer: str, claims: Sequence[ClaimVerdict], chunks: Sequence[RetrievedChunk]
+    answer: str, claims: Sequence[ClaimVerdict], chunks: Sequence[RetrievedChunk],
+    joins: Joins | None = None,
 ) -> tuple[list[ClaimVerdict], list[int]]:
     """Apply citation checks to `claims`; also returns the non-existent passage numbers cited.
 
@@ -383,20 +530,24 @@ def check_citations(
     cites no passage, cites a passage number that does not exist, or cites only passages that
     do not contain its evidence is lowered to partially supported. A factual sentence that no
     claim covers and that has no valid citation is added as an unsupported claim. Limitation
-    statements need no citation.
+    statements need no citation. A quote spanning two adjacent cited chunks (`joins`) counts as
+    contained in them.
     """
     sentences = answer_checks.split_sentences(answer)
+    match_texts = answer_checks.with_lead_ins(sentences)
+    contiguous = {chunk_id: [text for _, text in pairs] for chunk_id, pairs in (joins or {}).items()}
     covered: set[int] = set()
     checked = []
     for claim in claims:
-        index = answer_checks.match_sentence(claim.claim_text, sentences)
+        index = answer_checks.match_sentence(claim.claim_text, match_texts)
         if index is not None:
             covered.add(index)
         if index is None or claim.verdict == UNSUPPORTED or claim.evidence_chunk_id is None:
             checked.append(claim)
             continue
         problem = answer_checks.citation_problem(
-            claim.claim_text, [quote for _, quote in claim.evidence], sentences[index], chunks)
+            claim.claim_text, [quote for _, quote in claim.evidence], sentences[index], chunks,
+            contiguous)
         if problem is not None and claim.verdict == SUPPORTED:
             claim = replace(claim, verdict=PARTIALLY_SUPPORTED, evidence_error=problem,
                             check=CHECK_CITATION)
@@ -562,10 +713,22 @@ def evaluate_answer(
         )
 
     chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
-    claims = [judge_claim(claim, chunks_by_id) for claim in output.claims]
-    limitations, mislabeled = judge_limitations(output.limitations)
-    claims, duplicates = merge_duplicate_claims(claims + mislabeled)
-    claims, nonexistent = check_citations(answer, claims, chunks)
+    joins = contiguous_joins(chunks)
+    premises = answer_checks.numbers(question)
+    known = answer_checks.name_vocabulary(question, answer, *(chunk.text for chunk in chunks))
+    premise_names = answer_checks.anchors(question, known)
+    _, derived = answer_checks.grounded_calculations(
+        answer, set().union(*(answer_checks.numbers(chunk.text) for chunk in chunks)), premises)
+    claims = [judge_claim(claim, chunks_by_id, premises=premises, derived=derived,
+                          premise_names=premise_names, known=known, joins=joins,
+                          cited_texts=[chunk.text for chunk in answer_checks.cited_passages(
+                              claim.claim_text, answer, chunks)])
+              for claim in output.claims]
+    limitations, mislabeled = judge_limitations(output.limitations, claims)
+    limitations, contradictions = judge_contradictions(answer, limitations, claims,
+                                                       output.limitations)
+    claims, duplicates = merge_duplicate_claims(claims + mislabeled + contradictions)
+    claims, nonexistent = check_citations(answer, claims, chunks, joins)
     answer_relevance = output.answer_relevance
     if claims:
         faithfulness = compute_faithfulness([c.verdict for c in claims])
@@ -576,6 +739,9 @@ def evaluate_answer(
     failure_type = determine_failure_type(
         faithfulness, answer_relevance, output.context_relevance, threshold
     )
+    if failure_type is None and any(c.check == CHECK_CONTRADICTION for c in claims):
+        # Scores alone cannot pass an answer that contradicts itself.
+        failure_type = UNSUPPORTED_CLAIM
 
     return EvaluationResult(
         faithfulness=faithfulness,
@@ -583,19 +749,41 @@ def evaluate_answer(
         context_relevance=output.context_relevance,
         passed=failure_type is None,
         failure_type=failure_type,
-        feedback=_feedback(output.feedback, claims, limitations, nonexistent, duplicates) or None,
+        feedback=_feedback(output.feedback, claims, limitations, nonexistent, duplicates,
+                           scores=(faithfulness, answer_relevance, output.context_relevance),
+                           threshold=threshold) or None,
         claims=claims,
         **usage,
     )
 
 
 def _feedback(feedback: str, claims: Sequence[ClaimVerdict], limitations: Sequence[str],
-              nonexistent: Sequence[int], duplicates: int = 0) -> str:
-    """Claude's feedback followed by a note for each deterministic check that changed a score."""
+              nonexistent: Sequence[int], duplicates: int = 0, *,
+              scores: tuple[float, float, float] | None = None,
+              threshold: float | None = None) -> str:
+    """Claude's feedback followed by a note for each deterministic check that changed a score,
+    and, when the checks lowered a score below `threshold` or found a contradiction, the
+    resulting verdict, so the feedback never reads as a pass for an answer that failed.
+
+    When a check changed any claim, Claude's feedback describes the answer before
+    verification, so it no longer leads: the feedback opens with the verified claim counts
+    and faithfulness, and Claude's text follows last, labeled as the pre-verification
+    assessment."""
     def count(check: str) -> int:
         return sum(c.check == check for c in claims)
 
-    notes = [feedback.strip()]
+    checked = any(c.check is not None for c in claims)
+    notes = []
+    if checked:
+        verdicts = [c.verdict for c in claims]
+        summary = (f"Verified result: {verdicts.count(SUPPORTED)} of {len(claims)} claim(s) "
+                   f"supported, {verdicts.count(PARTIALLY_SUPPORTED)} partially supported, "
+                   f"{verdicts.count(UNSUPPORTED)} unsupported")
+        if scores is not None and math.isfinite(scores[0]):
+            summary += f" (faithfulness {scores[0]:.2f})"
+        notes.append(f"{summary}.")
+    else:
+        notes.append(feedback.strip())
     invalid = sum(c.check == CHECK_EVIDENCE and c.claude_verdict != UNSUPPORTED for c in claims)
     if invalid:
         notes.append(f"{invalid} claim(s) cited evidence that could not be verified against the "
@@ -617,9 +805,26 @@ def _feedback(feedback: str, claims: Sequence[ClaimVerdict], limitations: Sequen
     if count(CHECK_LIMITATION):
         notes.append(f"{count(CHECK_LIMITATION)} statement(s) labeled as limitations assert "
                      f"facts and were scored unsupported.")
+    if count(CHECK_CONTRADICTION):
+        notes.append(f"{count(CHECK_CONTRADICTION)} limitation statement(s) say the sources do "
+                     f"not cover something the answer itself claims; the answer contradicts "
+                     f"itself and cannot pass.")
     if limitations:
         notes.append(f"{len(limitations)} limitation statement(s) were not scored as factual "
                      f"claims.")
     if duplicates:
         notes.append(f"{duplicates} repeated claim(s) were counted once.")
+    if scores is not None and checked:
+        if threshold is None:
+            threshold = settings.evaluator_pass_threshold
+        below = [f"{name} {score:.2f}" for name, score in
+                 zip(("faithfulness", "answer relevance", "context relevance"), scores)
+                 if not math.isfinite(score) or score < threshold]
+        if below:
+            notes.append(f"After verification, {', '.join(below)} "
+                         f"{'is' if len(below) == 1 else 'are'} below the {threshold:.2f} "
+                         f"threshold, so the answer did not pass.")
+    if checked and feedback.strip():
+        notes.append(f"Evaluator's assessment before verification (superseded by the verified "
+                     f"result above): {feedback.strip()}")
     return " ".join(note for note in notes if note)

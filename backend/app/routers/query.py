@@ -64,6 +64,8 @@ def claim_read(claim: Claim) -> ClaimRead:
         claude_verdict=claim.claude_verdict,
         evidence_error=claim.evidence_error,
         check_name=claim.check_name,
+        claude_evidence_chunk_id=claim.claude_evidence_chunk_id,
+        claude_evidence_quote=claim.claude_evidence_quote,
     )
 
 

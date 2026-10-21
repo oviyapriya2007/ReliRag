@@ -17,14 +17,22 @@ from unittest.mock import MagicMock, patch
 
 # Must be set before `app` is imported so the app never connects to the real database.
 os.environ["DATABASE_URL"] = "sqlite://"
-# Pin the evaluator settings so a local .env cannot change the expected results.
+# Evaluator environment variables, ignored when a test loads fresh Settings.
 EVALUATOR_ENV = {
     "EVALUATOR_MODEL": "",
     "EVALUATOR_MAX_TOKENS": "2048",
     "EVALUATOR_PASS_THRESHOLD": "0.80",
     "EVALUATOR_MAX_PARSE_ATTEMPTS": "2",
 }
-os.environ.update(EVALUATOR_ENV)
+# Pinned on the shared settings object while this module's tests run (setUpModule), so a
+# local .env, or another test module having created the settings first, cannot change the
+# expected results.
+PINNED_SETTINGS = {
+    "evaluator_model": None,
+    "evaluator_max_tokens": 2048,
+    "evaluator_pass_threshold": 0.80,
+    "evaluator_max_parse_attempts": 2,
+}
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -48,6 +56,21 @@ from app.services.evaluator import (  # noqa: E402
 )
 from app.services.llm import LLMError, LLMResult  # noqa: E402
 from app.services.retrieval import RetrievedChunk  # noqa: E402
+
+_patchers = []
+
+
+def setUpModule():
+    for name, value in PINNED_SETTINGS.items():
+        patcher = patch.object(settings, name, value)
+        patcher.start()
+        _patchers.append(patcher)
+
+
+def tearDownModule():
+    while _patchers:
+        _patchers.pop().stop()
+
 
 MODEL = "claude-test-model"
 QUESTION = "What does TCP provide?"

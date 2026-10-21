@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   USE_MOCK,
@@ -7,6 +7,11 @@ import {
   getQuery,
   runQuery,
 } from "../../api/client";
+import {
+  attemptOutcome,
+  claimVerification,
+  hasSelfContradiction,
+} from "../evaluationDisplay.js";
 
 const PURPLE = "#55416F";
 const BLUE = "#738FBD";
@@ -354,11 +359,21 @@ function HistorySidebar({ history, onClear }) {
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {history.map((item, index) => (
-            <Link
+          {history.map((item, index) => {
+            // Unsaved results have no query to open.
+            const unsaved = String(item.id).startsWith("local-");
+            const ItemTag = unsaved ? "div" : Link;
+            const itemProps = unsaved
+              ? {}
+              : { to: `/query/${encodeURIComponent(item.id)}` };
+
+            return (
+            <ItemTag
               key={String(item.id)}
-              to={`/query/${encodeURIComponent(item.id)}`}
-              className="block rounded-xl border bg-white p-3 transition hover:bg-[#EEF3FA]"
+              {...itemProps}
+              className={`block rounded-xl border bg-white p-3 transition ${
+                unsaved ? "" : "hover:bg-[#EEF3FA]"
+              }`}
               style={{
                 borderColor: BORDER,
                 borderLeftWidth: "3px",
@@ -385,11 +400,15 @@ function HistorySidebar({ history, onClear }) {
                   : "Recent query"}
               </p>
 
-              <p className="mt-1 text-xs font-medium" style={{ color: BLUE }}>
-                View query →
+              <p
+                className="mt-1 text-xs font-medium"
+                style={{ color: unsaved ? MUTED_TEXT : BLUE }}
+              >
+                {unsaved ? "Not saved" : "View query →"}
               </p>
-            </Link>
-          ))}
+            </ItemTag>
+            );
+          })}
         </div>
       )}
 
@@ -852,7 +871,12 @@ function PipelineStageGrid({
   );
 }
 
-function CorrectionPipeline({ loading, result, error, mode }) {
+function CorrectionPipeline({
+  loading,
+  result,
+  error,
+  mode,
+}) {
   const reducedMotion = useReducedMotion();
 
   if (!loading && !result && !error) return null;
@@ -871,9 +895,14 @@ function CorrectionPipeline({ loading, result, error, mode }) {
   // "Evaluate" reports attempt 1; "Re-evaluate" reports the correction attempt that ran,
   // whichever attempt was finally selected.
   const firstEvaluation = (attempts[0] ?? finalAttempt)?.evaluation;
+  const firstOutcome = attemptOutcome(attempts[0] ?? finalAttempt);
   const retryEvaluation = correctionAttempted
     ? attempts[attempts.length - 1]?.evaluation
     : undefined;
+  const firstReported =
+    correctionAttempted &&
+    finalAttempt != null &&
+    Number(finalAttempt.attempt_number) === Number(attempts[0]?.attempt_number);
 
   function getResultStageState(index) {
     if (error) return index === 0 ? "failed" : "pending";
@@ -887,6 +916,7 @@ function CorrectionPipeline({ loading, result, error, mode }) {
     }
 
     if (index === 2) {
+      if (firstOutcome.kind === "insufficient") return "skipped";
       if (!firstEvaluation) return "unknown";
       return firstEvaluation.passed === false ? "failed" : "complete";
     }
@@ -913,6 +943,15 @@ function CorrectionPipeline({ loading, result, error, mode }) {
   }
 
   function getResultStageMessage(index, state) {
+    if (index === 2 && firstOutcome.kind === "insufficient") {
+      return "Not evaluated: insufficient evidence";
+    }
+    if (index === 2 && state === "failed") return "Evaluation failed";
+    if (index === 4 && state === "failed") {
+      return firstReported
+        ? "Retry failed; attempt 1 reported"
+        : "Retry evaluated; did not pass";
+    }
     if (state === "failed") return "Check result";
     if (state === "skipped") return "Not required / not reported";
     if (state === "unknown") return "Evaluation data unavailable";
@@ -925,7 +964,11 @@ function CorrectionPipeline({ loading, result, error, mode }) {
       }
 
       if (index === 3) return "Retry found in result";
-      if (index === 4) return "Correction evaluation received";
+      if (index === 4) {
+        return firstReported
+          ? "Retry evaluated; attempt 1 reported"
+          : `Retry evaluated; attempt ${finalAttempt?.attempt_number ?? 2} reported`;
+      }
 
       return "Completed";
     }
@@ -952,7 +995,11 @@ function CorrectionPipeline({ loading, result, error, mode }) {
         <span
           className="rounded-full px-3 py-1 text-xs font-semibold"
           style={{
-            color: loading ? PURPLE : error ? "#991B1B" : "#166534",
+            color: loading
+              ? PURPLE
+              : error
+                ? "#991B1B"
+                : "#166534",
             backgroundColor: loading
               ? SOFT_BLUE
               : error
@@ -1045,7 +1092,14 @@ function getVerdict(evaluation) {
 }
 
 function EvaluationSummary({ evaluation, attempt, attemptCount }) {
-  const verdict = getVerdict(evaluation);
+  const outcome = attemptOutcome(attempt);
+  const verdict =
+    outcome.kind === "insufficient"
+      ? { label: "NOT EVALUATED", color: "#92400E", background: "#FFF2D6" }
+      : getVerdict(evaluation);
+  const downgraded = (evaluation?.claims ?? []).filter(
+    (claim) => claimVerification(claim).downgraded
+  );
 
   const metrics = [
     {
@@ -1116,6 +1170,51 @@ function EvaluationSummary({ evaluation, attempt, attemptCount }) {
           </span>
         )}
       </div>
+
+      {outcome.kind === "insufficient" && (
+        <p className="mt-3 text-sm leading-6" style={{ color: "#92400E" }}>
+          Not evaluated: retrieval did not find enough evidence, so no answer was
+          generated or scored. This is not an evaluation failure.
+        </p>
+      )}
+
+      {hasSelfContradiction(evaluation) && evaluation?.passed === false && (
+        <p className="mt-3 text-sm leading-6" style={{ color: "#991B1B" }}>
+          The answer contradicts itself: a limitation statement says the sources do not
+          cover something the answer claims. It cannot pass, whatever its scores.
+        </p>
+      )}
+
+      {evaluation?.feedback && (
+        <div
+          className="mt-3 rounded-lg border p-3 text-sm leading-6"
+          style={{ borderColor: BORDER, color: DARK_TEXT, backgroundColor: "#FCFAFD" }}
+        >
+          <span className="font-semibold" style={{ color: PURPLE }}>
+            Evaluator feedback:{" "}
+          </span>
+          {evaluation.feedback}
+        </div>
+      )}
+
+      {downgraded.length > 0 && (
+        <div className="mt-3 text-sm leading-6" style={{ color: DARK_TEXT }}>
+          <p className="font-semibold" style={{ color: PURPLE }}>
+            Claims changed by verification
+          </p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {downgraded.map((claim, index) => {
+              const verification = claimVerification(claim);
+              return (
+                <li key={`${index}-${claim.claim_text}`}>
+                  “{claim.claim_text}” → {String(claim.verdict).replaceAll("_", " ")}:{" "}
+                  {verification.reason || verification.checkLabel}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {metrics.map((metric) => (
@@ -1343,6 +1442,16 @@ export default function Ask() {
   const [error, setError] = useState("");
   const [showEvidence, setShowEvidence] = useState(true);
   const [showDebug, setShowDebug] = useState(false);
+  // Responses to an earlier submission (or after unmount) are ignored.
+  const requestToken = useRef(0);
+
+  useEffect(() => {
+    const token = requestToken;
+
+    return () => {
+      token.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1447,6 +1556,40 @@ export default function Ask() {
     );
   }
 
+  function showResult(data, submittedQuestion) {
+    setResult(data);
+
+    const id = data.query_id ?? data.id ?? null;
+
+    if (id != null) {
+      setQueryId(String(id));
+
+      try {
+        sessionStorage.setItem(LAST_QUERY_KEY, String(id));
+      } catch {
+        // Restoring the last query is optional.
+      }
+
+      recordHistory(id, submittedQuestion, data);
+    } else {
+      setQueryHistory((previous) => {
+        const updated = [
+          {
+            id: `local-${Date.now()}`,
+            question: submittedQuestion,
+            status: getStatus(data),
+            timestamp: new Date().toISOString(),
+          },
+          ...previous,
+        ].slice(0, MAX_HISTORY);
+
+        saveHistory(updated);
+
+        return updated;
+      });
+    }
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -1464,6 +1607,8 @@ export default function Ask() {
       return;
     }
 
+    const token = requestToken.current + 1;
+    requestToken.current = token;
     setLoading(true);
     setError("");
     setResult(null);
@@ -1499,41 +1644,14 @@ export default function Ask() {
         k: topK,
       });
 
-      setResult(data);
+      if (requestToken.current !== token) return;
 
-      const id = data.query_id ?? data.id ?? null;
-
-      if (id != null) {
-        setQueryId(String(id));
-
-        try {
-          sessionStorage.setItem(LAST_QUERY_KEY, String(id));
-        } catch {
-          // Restoring the last query is optional.
-        }
-
-        recordHistory(id, submittedQuestion, data);
-      } else {
-        setQueryHistory((previous) => {
-          const updated = [
-            {
-              id: `local-${Date.now()}`,
-              question: submittedQuestion,
-              status: getStatus(data),
-              timestamp: new Date().toISOString(),
-            },
-            ...previous,
-          ].slice(0, MAX_HISTORY);
-
-          saveHistory(updated);
-
-          return updated;
-        });
-      }
+      showResult(data, submittedQuestion);
     } catch (err) {
+      if (requestToken.current !== token) return;
       setError(err.message || "Something went wrong while querying.");
     } finally {
-      setLoading(false);
+      if (requestToken.current === token) setLoading(false);
     }
   }
 
@@ -1586,6 +1704,8 @@ export default function Ask() {
     status.includes("INSUFFICIENT_EVIDENCE") ||
     status.includes("INSUFFICIENT") ||
     result?.insufficient_evidence === true;
+
+  const busy = loading;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
@@ -1706,7 +1826,7 @@ export default function Ask() {
                 backgroundColor: "#FCFAFD",
                 "--tw-ring-color": `${BLUE}66`,
               }}
-              disabled={loading}
+              disabled={busy}
               aria-describedby="question-help"
             />
 
@@ -1721,7 +1841,7 @@ export default function Ask() {
             <ModeSelector
               mode={mode}
               onChange={setMode}
-              disabled={loading}
+              disabled={busy}
             />
 
             <div
@@ -1730,11 +1850,11 @@ export default function Ask() {
             >
               <button
                 type="submit"
-                disabled={loading || loadingDocuments}
+                disabled={busy || loadingDocuments}
                 className="rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ backgroundColor: PURPLE }}
               >
-                {loading ? "Processing pipeline…" : "Ask Attest →"}
+                {busy ? "Processing pipeline…" : "Ask Attest →"}
               </button>
 
               <button
@@ -1745,7 +1865,7 @@ export default function Ask() {
                   setQueryId(null);
                   setError("");
                 }}
-                disabled={loading}
+                disabled={busy}
                 className="rounded-xl border bg-white px-4 py-3 text-sm font-medium transition hover:bg-[#F3EDF5] disabled:opacity-50"
                 style={{ borderColor: BORDER, color: DARK_TEXT }}
               >
@@ -1866,11 +1986,30 @@ export default function Ask() {
                       </div>
 
                       <p className="mt-2 text-sm leading-6">
-                        The retrieved documents do not provide enough
-                        reliable evidence to answer this question confidently.
-                        Try selecting other documents or asking a more
-                        specific question.
+                        The retrieved documents do not provide enough reliable evidence to answer this question confidently. Try selecting other documents or asking a more specific question.
                       </p>
+
+                      {documents.length > 0 &&
+                        selectedDocuments.length < documents.length && (
+                          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                            <span className="font-semibold">
+                              Only {selectedDocuments.length} of{" "}
+                              {documents.length} documents were selected.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedDocuments(
+                                  documents.map((doc) => String(doc.id))
+                                )
+                              }
+                              className="rounded-lg border px-3 py-1.5 text-xs font-bold transition hover:opacity-80"
+                              style={{ borderColor: "#E9C78A", backgroundColor: "#FFFFFF" }}
+                            >
+                              Select all documents
+                            </button>
+                          </div>
+                        )}
 
                       {answer && (
                         <p className="mt-3 whitespace-pre-wrap text-sm leading-6">

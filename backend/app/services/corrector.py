@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.config import settings
+from app.services import answer_checks
 from app.services.evaluator import (
     IRRELEVANT_RETRIEVAL,
     MISSING_INFO,
@@ -216,8 +217,21 @@ def _unquote(text: str) -> str:
     return text
 
 
-def clean_rewrite(text: str, question: str) -> tuple[str | None, str | None]:
-    """(rewritten query, None) if Claude's reply is usable, else (None, reason)."""
+def added_names(rewritten: str, *sources: str) -> list[str]:
+    """Names in `rewritten` (see `answer_checks.anchor_sequence`) that occur in none of
+    `sources`: facts the rewrite brought in from outside the question and feedback."""
+    words = {word.casefold() for source in sources
+             for word in re.findall(r"[^\W_]+", source or "")}
+    return [name for name in answer_checks.anchor_sequence(rewritten)
+            if len(name) > 1 and name.casefold() not in words]
+
+
+def clean_rewrite(text: str, question: str,
+                  feedback: str | None = None) -> tuple[str | None, str | None]:
+    """(rewritten query, None) if Claude's reply is usable, else (None, reason).
+
+    A rewrite that names things the question and `feedback` do not (e.g. items recalled
+    from prior knowledge) is rejected, as the rewrite prompt forbids."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return None, "empty"
@@ -231,6 +245,9 @@ def clean_rewrite(text: str, question: str) -> tuple[str | None, str | None]:
         return None, "too long"
     if rewritten.casefold() == " ".join(question.split()).casefold():
         return None, "unchanged"
+    outside = added_names(rewritten, question, feedback or "")
+    if outside:
+        return None, f"adds names not in the question or feedback: {', '.join(outside)}"
     return rewritten, None
 
 
@@ -263,7 +280,7 @@ def rewrite_query(
         logger.warning("Query rewrite Claude call failed: %r", exc)
         return RewriteResult(question, False, f"Claude call failed: {exc}", None)
 
-    rewritten, reason = clean_rewrite(llm.text, question)
+    rewritten, reason = clean_rewrite(llm.text, question, feedback)
     if rewritten is None:
         logger.warning("Query rewrite rejected (%s): %r", reason, llm.text[:200])
         return RewriteResult(question, False, reason, llm)

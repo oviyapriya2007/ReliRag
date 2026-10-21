@@ -212,6 +212,8 @@ class QueryStatusTest(unittest.TestCase):
                 "claude_verdict": SUPPORTED,
                 "evidence_error": None,
                 "check_name": None,
+                "claude_evidence_chunk_id": self.chunk_id,
+                "claude_evidence_quote": "reliable, ordered byte stream",
             }],
         })
         self.assertEqual((saved_claim.claude_verdict, saved_claim.evidence_error,
@@ -593,7 +595,8 @@ class QueryStatusTest(unittest.TestCase):
         bad_claim = type("BadClaim", (), {"claim_text": "x", "verdict": UNSUPPORTED,
                                           "evidence_chunk_id": None, "evidence_quote": None,
                                           "claude_verdict": None, "evidence_error": "why",
-                                          "check": "other"})()
+                                          "check": "other", "claude_evidence_chunk_id": None,
+                                          "claude_evidence_quote": None})()
         result = EvaluationResult(faithfulness=0.0, answer_relevance=0.9, context_relevance=0.9,
                                   passed=False, failure_type=UNSUPPORTED_CLAIM, feedback="x",
                                   claims=[bad_claim], model=MODEL, input_tokens=1,

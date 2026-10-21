@@ -41,7 +41,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             "ALTER TABLE claims"
             " ADD COLUMN IF NOT EXISTS claude_verdict VARCHAR(32),"
             " ADD COLUMN IF NOT EXISTS evidence_error TEXT,"
-            " ADD COLUMN IF NOT EXISTS check_name VARCHAR(16)"
+            " ADD COLUMN IF NOT EXISTS check_name VARCHAR(16),"
+            " ADD COLUMN IF NOT EXISTS claude_evidence_chunk_id INTEGER,"
+            " ADD COLUMN IF NOT EXISTS claude_evidence_quote TEXT"
         ))
     yield
 
