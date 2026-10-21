@@ -1,3 +1,4 @@
+
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 const API_BASE_URL =
@@ -271,6 +272,38 @@ async function getAnalyticsSummary({
   return response.json()
 }
 
+// Download evaluation results as a CSV file.
+async function exportEvaluationsCsv() {
+  if (USE_MOCK) {
+    throw new Error(
+      'CSV export requires mock mode to be disabled.',
+    )
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/evaluations/export.csv`,
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      await errorMessage(response, 'Failed to export CSV'),
+    )
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = 'evaluations.csv'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+
+  // Release the temporary download URL.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export {
   getDocuments,
   uploadDocument,
@@ -279,4 +312,5 @@ export {
   getQuery,
   compareAnswers,
   getAnalyticsSummary,
+  exportEvaluationsCsv,
 }
